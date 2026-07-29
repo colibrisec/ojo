@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	apiBase          = "https://api.osv.dev/v1"
+	apiBase           = "https://api.osv.dev/v1"
 	detailConcurrency = 10 // ponytail: fixed worker count, tune if OSV rate-limits large scans
 )
 
@@ -91,9 +91,19 @@ type vulnDetail struct {
 		Type  string `json:"type"`
 		Score string `json:"score"`
 	} `json:"severity"`
+	DatabaseSpecific struct {
+		Severity string `json:"severity"` // e.g. CRITICAL/HIGH/MODERATE/LOW, present on GHSA-sourced advisories
+	} `json:"database_specific"`
 	References []struct {
 		URL string `json:"url"`
 	} `json:"references"`
+}
+
+func normalizeSeverity(s string) string {
+	if s == "MODERATE" {
+		return "MEDIUM" // align with the Issue.Severity vocabulary used by secret/misconfig/sast
+	}
+	return s
 }
 
 func fetchDetails(ctx context.Context, ids map[string]struct{}) map[string]model.Vulnerability {
@@ -115,8 +125,11 @@ func fetchDetails(ctx context.Context, ids map[string]struct{}) map[string]model
 				return // ponytail: drop vulns whose detail lookup fails, don't fail the scan
 			}
 			v := model.Vulnerability{ID: d.ID, Summary: d.Summary, Aliases: d.Aliases, Severity: "UNKNOWN"}
+			if d.DatabaseSpecific.Severity != "" {
+				v.Severity = normalizeSeverity(d.DatabaseSpecific.Severity)
+			}
 			if len(d.Severity) > 0 {
-				v.Severity = d.Severity[0].Score
+				v.CVSSVector = d.Severity[0].Score
 			}
 			if len(d.References) > 0 {
 				v.URL = d.References[0].URL

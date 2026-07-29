@@ -21,11 +21,12 @@ type Package struct {
 
 // Vulnerability is a single OSV advisory affecting a package.
 type Vulnerability struct {
-	ID       string
-	Summary  string
-	Severity string
-	Aliases  []string
-	URL      string
+	ID         string
+	Summary    string
+	Severity   string // CRITICAL/HIGH/MODERATE/LOW/UNKNOWN
+	CVSSVector string // raw CVSS vector string, if OSV provided one
+	Aliases    []string
+	URL        string
 }
 
 // Finding pairs a package with the vulnerabilities affecting it.

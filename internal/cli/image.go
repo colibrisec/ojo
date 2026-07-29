@@ -43,7 +43,7 @@ func imageCmd() *cobra.Command {
 					return err
 				}
 			default:
-				report.Table(cmd.OutOrStdout(), findings)
+				report.Table(cmd.OutOrStdout(), "", findings)
 			}
 
 			if len(findings) > 0 {
