@@ -81,7 +81,7 @@ func fsCmd() *cobra.Command {
 					return err
 				}
 			default:
-				rep.Table(cmd.OutOrStdout())
+				rep.Table(cmd.OutOrStdout(), root)
 			}
 
 			if len(rep.Findings) > 0 || len(rep.Issues) > 0 {
