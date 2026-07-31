@@ -2,7 +2,6 @@ package osv
 
 import (
 	"sort"
-	"strings"
 
 	"github.com/colibrisec/ojo/internal/model"
 )
@@ -101,9 +100,9 @@ func isMoreInformative(a, b model.Vulnerability) bool {
 	if aKnown != bKnown {
 		return aKnown
 	}
-	aGHSA, bGHSA := strings.HasPrefix(a.ID, "GHSA-"), strings.HasPrefix(b.ID, "GHSA-")
-	if aGHSA != bGHSA {
-		return aGHSA
+	aFixed, bFixed := a.FixedVersion != "", b.FixedVersion != ""
+	if aFixed != bFixed {
+		return aFixed
 	}
 	return len(a.Summary) > len(b.Summary)
 }

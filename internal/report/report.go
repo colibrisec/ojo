@@ -6,44 +6,67 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
 
 	"github.com/colibrisec/ojo/internal/model"
 )
 
-// Table prints a human-readable, severity-sorted vulnerability table.
-// root, if non-empty, is used to shorten Package.Source paths for display.
+const titleWrapWidth = 60
+
+// Table prints a human-readable, box-drawn vulnerability table grouped by
+// package (alphabetical) and sorted by severity within each package,
+// matching Trivy's layout. root, if non-empty, is unused here (kept for
+// signature symmetry with IssueTable) since Package.Source for vuln
+// findings is rarely a meaningful filesystem path (e.g. "apk"/"dpkg" for
+// image scans).
 func Table(w io.Writer, root string, findings []model.Finding) {
+	_ = root
 	if len(findings) == 0 {
 		fmt.Fprintln(w, "No vulnerabilities found.")
 		return
 	}
 
-	type row struct {
+	type vulnRow struct {
 		pkg  model.Package
 		vuln model.Vulnerability
 	}
-	var flat []row
+	var flat []vulnRow
 	for _, f := range findings {
 		for _, v := range f.Vulns {
-			flat = append(flat, row{f.Package, v})
+			flat = append(flat, vulnRow{f.Package, v})
 		}
 	}
 	sort.SliceStable(flat, func(i, j int) bool {
+		if flat[i].pkg.Name != flat[j].pkg.Name {
+			return flat[i].pkg.Name < flat[j].pkg.Name
+		}
 		return severityRank(flat[i].vuln.Severity) < severityRank(flat[j].vuln.Severity)
 	})
 
 	rows := make([][]string, len(flat))
 	for i, r := range flat {
-		rows[i] = []string{
-			r.vuln.Severity,
-			fmt.Sprintf("%s@%s", r.pkg.Name, r.pkg.Version),
-			r.vuln.ID,
-			r.vuln.Summary,
+		title := r.vuln.Summary
+		if r.vuln.URL != "" {
+			title += "\n" + r.vuln.URL
 		}
+		rows[i] = []string{r.pkg.Name, r.vuln.ID, r.vuln.Severity, "affected", r.pkg.Version, r.vuln.FixedVersion, title}
 	}
-	writeTable(w, []string{"SEVERITY", "PACKAGE", "VULN ID", "SUMMARY"}, rows, 0, isColorWriter(w))
+	// Blank out cells that repeat the row above so identical runs read as one
+	// merged span (Library=0, Severity=2, Status=3, Installed Version=4).
+	mergeRuns(rows, []int{0, 2, 3, 4})
+
+	cols := []boxColumn{
+		{Header: "Library"},
+		{Header: "Vulnerability"},
+		{Header: "Severity"},
+		{Header: "Status"},
+		{Header: "Installed Version"},
+		{Header: "Fixed Version"},
+		{Header: "Title", Wrap: titleWrapWidth},
+	}
+	writeBoxTable(w, cols, rows, 2, isColorWriter(w))
 }
 
 // JSON prints findings as indented JSON.
@@ -53,9 +76,9 @@ func JSON(w io.Writer, findings []model.Finding) error {
 	return enc.Encode(findings)
 }
 
-// IssueTable prints a human-readable, severity-sorted table of non-SCA
-// scanner issues (secret/misconfig/sast). root, if non-empty, shortens
-// file paths for display.
+// IssueTable prints a human-readable, box-drawn table of non-SCA scanner
+// issues (secret/misconfig/sast), sorted by severity. root, if non-empty,
+// shortens file paths for display.
 func IssueTable(w io.Writer, root string, issues []model.Issue) {
 	if len(issues) == 0 {
 		return
@@ -76,11 +99,20 @@ func IssueTable(w io.Writer, root string, issues []model.Issue) {
 			iss.Message,
 		}
 	}
-	writeTable(w, []string{"SEVERITY", "LOCATION", "RULE", "MESSAGE"}, rows, 0, isColorWriter(w))
+	mergeRuns(rows, []int{0}) // blank repeated Severity values, same as the vuln table
+
+	cols := []boxColumn{
+		{Header: "Severity"},
+		{Header: "Location"},
+		{Header: "Rule"},
+		{Header: "Message", Wrap: titleWrapWidth},
+	}
+	writeBoxTable(w, cols, rows, 0, isColorWriter(w))
 }
 
 // Report is the combined output of every scanner requested in one invocation.
 type Report struct {
+	Target   string          `json:"target,omitempty"`
 	Findings []model.Finding `json:"findings,omitempty"`
 	Issues   []model.Issue   `json:"issues,omitempty"`
 }
@@ -92,13 +124,23 @@ func (r Report) JSON(w io.Writer) error {
 	return enc.Encode(r)
 }
 
-// Table prints the combined report's vuln table, issue table, and a
-// severity-bucketed summary line. root, if non-empty, shortens file paths.
+// Table prints the target header, a Trivy-style "Total: N (...)" summary
+// line, the vuln table, and the issue table.
 func (r Report) Table(w io.Writer, root string) {
 	if len(r.Findings) == 0 && len(r.Issues) == 0 {
+		if r.Target != "" {
+			printTargetHeader(w, r.Target)
+		}
 		fmt.Fprintln(w, "No issues found.")
 		return
 	}
+
+	if r.Target != "" {
+		printTargetHeader(w, r.Target)
+	}
+	printTotalLine(w, r.Findings, r.Issues)
+	fmt.Fprintln(w)
+
 	if len(r.Findings) > 0 {
 		Table(w, root, r.Findings)
 	}
@@ -108,48 +150,41 @@ func (r Report) Table(w io.Writer, root string) {
 		}
 		IssueTable(w, root, r.Issues)
 	}
-	fmt.Fprintln(w)
-	printSummary(w, r.Findings, r.Issues)
 }
 
-func printSummary(w io.Writer, findings []model.Finding, issues []model.Issue) {
+func printTargetHeader(w io.Writer, target string) {
+	fmt.Fprintln(w, target)
+	fmt.Fprintln(w, strings.Repeat("=", len([]rune(target))))
+}
+
+// printTotalLine matches Trivy's "Total: N (UNKNOWN: x, LOW: y, MEDIUM: z,
+// HIGH: w, CRITICAL: v)" wording and ascending severity order.
+func printTotalLine(w io.Writer, findings []model.Finding, issues []model.Issue) {
 	counts := map[string]int{}
-	vulnTotal := 0
+	total := 0
 	for _, f := range findings {
 		for _, v := range f.Vulns {
 			counts[v.Severity]++
-			vulnTotal++
+			total++
 		}
 	}
 	for _, i := range issues {
 		counts[i.Severity]++
+		total++
 	}
 
 	color := isColorWriter(w)
-	order := []string{"CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO", "UNKNOWN"}
+	order := []string{"UNKNOWN", "INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"}
 	var parts []string
 	for _, sev := range order {
-		if n := counts[sev]; n > 0 {
-			label := fmt.Sprintf("%s: %d", sev, n)
-			if color {
-				label = severityCode(sev) + label + ansiReset
-			}
-			parts = append(parts, label)
+		n := counts[sev]
+		label := fmt.Sprintf("%s: %d", sev, n)
+		if color {
+			label = severityCode(sev) + label + ansiReset
 		}
+		parts = append(parts, label)
 	}
-
-	fmt.Fprintf(w, "%d vulnerabilities, %d issues", vulnTotal, len(issues))
-	if len(parts) > 0 {
-		fmt.Fprint(w, "  [")
-		for i, p := range parts {
-			if i > 0 {
-				fmt.Fprint(w, "  ")
-			}
-			fmt.Fprint(w, p)
-		}
-		fmt.Fprint(w, "]")
-	}
-	fmt.Fprintln(w)
+	fmt.Fprintf(w, "Total: %d (%s)\n", total, strings.Join(parts, ", "))
 }
 
 // SBOM renders the package inventory as a CycloneDX 1.5 JSON document.

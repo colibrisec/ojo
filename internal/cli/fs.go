@@ -37,7 +37,7 @@ func fsCmd() *cobra.Command {
 				return report.SBOM(cmd.OutOrStdout(), pkgs)
 			}
 
-			var rep report.Report
+			rep := report.Report{Target: root}
 			for _, s := range strings.Split(scanners, ",") {
 				switch strings.TrimSpace(s) {
 				case "vuln":
