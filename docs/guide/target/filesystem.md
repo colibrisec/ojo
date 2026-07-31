@@ -16,9 +16,15 @@ ojo walks the tree and parses every recognized manifest/lockfile it finds:
 |---|---|---|
 | Go | `go.mod` | Parsed with `golang.org/x/mod/modfile`; includes indirect requires |
 | npm | `package-lock.json` | Supports both the v1 (`dependencies`) and v2/v3 (`packages`) lockfile shapes |
-| PyPI | `requirements.txt` | Only pinned `name==version` lines. Ranges (`>=`, `~=`), extras, and VCS URLs are not parsed — an unpinned line is silently skipped rather than guessed at |
+| PyPI | `requirements.txt`, `Pipfile.lock`, `poetry.lock` | `requirements.txt`: only pinned `name==version` lines — ranges (`>=`, `~=`), extras, and VCS URLs are silently skipped rather than guessed at. `Pipfile.lock`/`poetry.lock` are fully-resolved lockfiles, no such gap. |
+| PHP / Packagist | `composer.lock` | Fully-resolved lockfile |
+| .NET / NuGet | `packages.lock.json` | Opt-in file (`RestorePackagesWithLockFile=true`) — most .NET projects won't have it |
+| Dart / Pub | `pubspec.lock` | Fully-resolved lockfile |
+| Rust / crates.io | `Cargo.lock` | Fully-resolved lockfile |
+| Ruby / RubyGems | `Gemfile.lock` | Fully-resolved lockfile |
+| Java / Maven | `pom.xml`, `gradle.lockfile` | `gradle.lockfile` is Gradle's opt-in dependency-locking output — fully resolved. `pom.xml` is **not** a lockfile: property placeholders (`${spring.version}`) are resolved against that same file's `<properties>` block only; anything requiring parent-POM inheritance or a `<dependencyManagement>` section elsewhere is silently skipped rather than guessed at. |
 
-There is no `package.json`-only (unlocked) support and no `poetry.lock`/`Pipfile.lock`/`Gemfile.lock`/`pom.xml` support yet — see [Roadmap & Limitations](../../roadmap.md).
+There is no unlocked-manifest support (`package.json` without a lockfile, `build.gradle`/`build.gradle.kts` DSL parsing) — ojo only reads already-resolved dependency data. See [Roadmap & Limitations](../../roadmap.md).
 
 ## Example
 

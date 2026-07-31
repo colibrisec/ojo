@@ -27,11 +27,16 @@ var parsers = []Parser{
 	poetryLockParser{},
 	gemfileLockParser{},
 	gradleLockParser{},
+	mavenPomParser{},
 }
 
 // Discover walks root and parses every recognized manifest file it finds.
+// Packages that resolve to the same name+version+ecosystem across multiple
+// manifests (e.g. a repo with both requirements.txt and poetry.lock) are
+// deduped, keeping the first one found, so they're not double-reported.
 func Discover(root string) ([]model.Package, error) {
 	var pkgs []model.Package
+	seen := map[model.Package]bool{}
 	err := walk.Walk(root, func(path string, d fs.DirEntry) error {
 		for _, p := range parsers {
 			if p.Match(d.Name()) {
@@ -39,7 +44,15 @@ func Discover(root string) ([]model.Package, error) {
 				if perr != nil {
 					continue // ponytail: skip unparsable manifest, don't fail the whole scan
 				}
-				pkgs = append(pkgs, found...)
+				for _, pkg := range found {
+					dedupeKey := pkg
+					dedupeKey.Source = "" // same package via a different file is still a duplicate
+					if seen[dedupeKey] {
+						continue
+					}
+					seen[dedupeKey] = true
+					pkgs = append(pkgs, pkg)
+				}
 			}
 		}
 		return nil

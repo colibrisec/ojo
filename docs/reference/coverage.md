@@ -8,8 +8,14 @@ What ojo can actually scan today.
 |---|---|---|
 | Go | `go.mod` | ✅ |
 | npm | `package-lock.json` (v1 and v2/v3) | ✅ |
-| PyPI | `requirements.txt` (pinned `==` only) | ✅ |
-| Maven, Rust, Ruby, PHP, .NET, ... | — | ❌ Not implemented. `model.EcosystemMaven` exists as a constant but has no manifest parser wired up yet. |
+| PyPI | `requirements.txt` (pinned `==` only), `Pipfile.lock`, `poetry.lock` | ✅ |
+| Maven | `pom.xml` (literal + same-file `${property}` versions only), `gradle.lockfile` | ✅ |
+| Packagist (PHP) | `composer.lock` | ✅ |
+| NuGet (.NET) | `packages.lock.json` (opt-in file) | ✅ |
+| Pub (Dart) | `pubspec.lock` | ✅ |
+| crates.io (Rust) | `Cargo.lock` | ✅ |
+| RubyGems | `Gemfile.lock` | ✅ |
+| Everything else (Elixir, Swift, C/C++, ...) | — | ❌ Not implemented |
 
 ## Operating systems (`ojo image`)
 
