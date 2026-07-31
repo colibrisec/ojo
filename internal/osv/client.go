@@ -78,6 +78,7 @@ func Scan(ctx context.Context, pkgs []model.Package) ([]model.Finding, error) {
 				f.Vulns = append(f.Vulns, d)
 			}
 		}
+		f.Vulns = dedupeVulns(f.Vulns)
 		findings = append(findings, f)
 	}
 	return findings, nil
