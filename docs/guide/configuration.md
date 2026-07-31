@@ -28,6 +28,20 @@ Both commands.
 | `table` (default) | Box-drawn human-readable table |
 | `json` | Machine-readable, for piping into other tools |
 | `sbom` | CycloneDX 1.7 SBOM (see [SBOM](sbom.md)) — skips vulnerability scanning entirely |
+| `sarif` | [SARIF](https://docs.oasis-open.org/sarif/sarif/v2.1.0/) 2.1.0, for `github/codeql-action/upload-sarif` and similar tooling (validated against the official schema) |
+
+```console
+$ ojo fs -f sarif . > results.sarif
+```
+
+A minimal example CI step to surface findings in GitHub's Security tab:
+
+```yaml
+- run: ojo fs -f sarif . > results.sarif || true  # ojo exits 1 on findings; capture the file first
+- uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: results.sarif
+```
 
 ## Color
 

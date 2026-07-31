@@ -63,13 +63,12 @@ OSV ecosystem strings below are **verified against the live API** with a known-v
 - **CocoaPods (`Podfile.lock`)** — checked OSV's schema directly: there is no CocoaPods ecosystem defined at all. Not a parsing-effort problem; there's nowhere to send the query regardless of how well `Podfile.lock` gets parsed. Only revisit if OSV adds one.
 - **Scala/sbt (`build.sbt`)** — no dedicated Scala ecosystem either, but not needed: Scala libraries publish under Maven coordinates (e.g. `com.typesafe.akka:akka-http_2.13`), so the existing `Maven` ecosystem support already covers them correctly (verified live). The actual blocker is identical to Gradle's: `build.sbt` is a Scala program, not data. The opt-in [`sbt-dependency-lock`](https://github.com/stringbean/sbt-dependency-lock) plugin generates a JSON lockfile that would sidestep this the same way `gradle.lockfile` does — worth adding as its own small item *if* that plugin's adoption is common enough to matter; it's meaningfully less standard than Gradle's built-in locking, so verify real-world usage before investing.
 
-### SARIF output (`-f sarif`)
+### SARIF output (`-f sarif`) — ✅ shipped
 
-- Unlocks GitHub code scanning UI integration (`github/codeql-action/upload-sarif` in a workflow) — the most commonly requested CI integration format after JSON.
-- SARIF 2.1.0 is a well-defined JSON schema — hand-write the typed structs and marshal with stdlib `encoding/json`, same approach already used for CycloneDX-adjacent code. No new dependency needed; a SARIF library would be overkill for a schema this mechanical.
-- New file: `internal/report/sarif.go`. Map both `model.Finding` (vuln) and `model.Issue` (secret/misconfig/sast) into `runs[].results[]`, with `ruleId`, severity → SARIF `level` (`error`/`warning`/`note`), and `locations[].physicalLocation` (file path relative to scan root + line, for `Issue`; package name for `Finding`, which has no line — decide how to represent that gracefully, e.g. `artifactLocation.uri` = the manifest file `Package.Source`).
-- Wire into `cli/fs.go` and `cli/image.go`'s existing `format` switch, next to `json`/`sbom`.
-- Add `docs/reference/cli.md` and `docs/guide/configuration.md` entries once shipped.
+- `internal/report/sarif.go`: hand-written SARIF 2.1.0 structs + stdlib `encoding/json`, no new dependency.
+- **Validated against the official schema, not just eyeballed**: fetched `oasis-tcs/sarif-spec`'s actual schema file (note: it lives at `sarif-2.1/schema/sarif-schema-2.1.0.json` on the `main` branch — several commonly-cited URLs for this file, including the one initially used here, point at a stale `master`/`Schemata/` path that 404s) and ran a real scan's output through `jsonschema.Draft7Validator` — confirmed valid.
+- Rules are deduped by ID across results (two findings citing the same CVE produce one `rules[]` entry, two `results[]` entries). Severity maps CRITICAL/HIGH→`error`, MEDIUM/MODERATE→`warning`, LOW/INFO→`note`, UNKNOWN→`warning` (not silently dropped/hidden). `Finding` locations (package-level, no line number) correctly omit `region`; `Issue` locations include it when `Line > 0`.
+- Wired into `cli/fs.go` and `cli/image.go`'s `format` switch alongside `json`/`sbom`. Documented in `docs/reference/cli.md` and `docs/guide/configuration.md` (with a copy-pasteable `github/codeql-action/upload-sarif` snippet).
 
 ---
 
@@ -127,6 +126,6 @@ Note what this *isn't*: an Android app's third-party library dependencies are al
 ## Suggested sequencing
 
 1. ~~Ecosystem parsers (including Swift/SwiftURL)~~ — shipped.
-2. SARIF (independent of the others, unlocks CI integration) — up next.
-3. Config file (unblocks nothing else, but is cheap and improves ergonomics for everything above)
+2. ~~SARIF~~ — shipped.
+3. Config file (unblocks nothing else, but is cheap and improves ergonomics for everything above) — up next.
 4. SAST beyond Go / local DB / mobile binary scanning — all three are genuinely large and independent; pick whichever has an actual driving need rather than doing them speculatively. If mobile comes up, start with Android manifest/permission analysis only (smallest real slice, see that section).
