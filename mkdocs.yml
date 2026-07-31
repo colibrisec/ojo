@@ -1,0 +1,67 @@
+site_name: ojo
+site_description: ojo is an open source security scanner for dependencies, secrets, misconfiguration, and code
+site_url: https://ojo.dev/
+docs_dir: docs/
+repo_name: GitHub
+repo_url: https://github.com/colibrisec/ojo
+edit_uri: "blob/main/docs/"
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quick-start.md
+  - User Guide:
+      - Overview: guide/index.md
+      - Target:
+          - Filesystem: guide/target/filesystem.md
+          - Container Image: guide/target/container-image.md
+      - Scanner:
+          - Vulnerability: guide/scanner/vulnerability.md
+          - Secret: guide/scanner/secret.md
+          - Misconfiguration: guide/scanner/misconfiguration.md
+          - SAST: guide/scanner/sast.md
+      - SBOM: guide/sbom.md
+      - Configuration: guide/configuration.md
+  - Reference:
+      - CLI Reference: reference/cli.md
+      - Coverage: reference/coverage.md
+      - Exit Codes: reference/exit-codes.md
+  - Roadmap & Limitations: roadmap.md
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - search.suggest
+    - content.code.copy
+    - content.action.edit
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+plugins:
+  - search
