@@ -1,6 +1,72 @@
 package image
 
-import "testing"
+import (
+	"archive/tar"
+	"bytes"
+	"testing"
+)
+
+// TestReadImageFSFollowsSymlinkedOSRelease is a regression test: on Debian
+// slim images, /etc/os-release is a symlink to /usr/lib/os-release. A tar
+// symlink entry has zero content (the target is in Linkname, not the entry
+// body), so reading only "etc/os-release" silently produced an empty
+// os-release, an empty OSV ecosystem string, and OSV then matched package
+// names loosely across ecosystems (Debian's "tar" package matched npm's
+// "node-tar" advisories). readImageFS must fall back to usr/lib/os-release.
+func TestReadImageFSFollowsSymlinkedOSRelease(t *testing.T) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+
+	content := []byte("ID=debian\nVERSION_ID=\"13\"\n")
+	writeTarFile(t, tw, "usr/lib/os-release", content)
+	writeTarSymlink(t, tw, "etc/os-release", "../usr/lib/os-release")
+	writeTarFile(t, tw, "var/lib/dpkg/status", []byte("Package: tar\nStatus: install ok installed\nVersion: 1.35+dfsg-3.1\n\n"))
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	osRelease, _, dpkgStatus, err := readImageFS(tar.NewReader(&buf))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(osRelease) == 0 {
+		t.Fatal("expected os-release content to be read via the usr/lib/os-release fallback, got empty")
+	}
+
+	info := parseOSRelease(osRelease)
+	eco := osEcosystem(info)
+	if eco != "Debian:13" {
+		t.Errorf("expected ecosystem Debian:13, got %q (empty ecosystem causes OSV to loosely match across unrelated ecosystems)", eco)
+	}
+	if dpkgStatus == nil {
+		t.Error("expected dpkg status to also be read")
+	}
+}
+
+func writeTarFile(t *testing.T, tw *tar.Writer, name string, content []byte) {
+	t.Helper()
+	if err := tw.WriteHeader(&tar.Header{Name: name, Typeflag: tar.TypeReg, Size: int64(len(content)), Mode: 0o644}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(content); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestScanRefusesUnknownEcosystem(t *testing.T) {
+	// osEcosystem on an empty/unrecognized info map must yield "" so Scan's
+	// guard rejects the query rather than sending OSV an unscoped one.
+	if eco := osEcosystem(map[string]string{}); eco != "" {
+		t.Fatalf("expected empty ecosystem for unknown OS, got %q", eco)
+	}
+}
+
+func writeTarSymlink(t *testing.T, tw *tar.Writer, name, target string) {
+	t.Helper()
+	if err := tw.WriteHeader(&tar.Header{Name: name, Typeflag: tar.TypeSymlink, Linkname: target, Mode: 0o777}); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestParseApk(t *testing.T) {
 	data := []byte("P:apk-tools\nV:2.10.6-r0\nA:x86_64\n\nP:busybox\nV:1.30.1-r3\n\n")
