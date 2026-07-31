@@ -6,6 +6,7 @@ require (
 	github.com/CycloneDX/cyclonedx-go v0.11.0
 	github.com/google/go-containerregistry v0.21.7
 	github.com/hashicorp/hcl/v2 v2.24.0
+	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/spf13/cobra v1.10.2
 	github.com/zclconf/go-cty v1.16.3
 	golang.org/x/mod v0.38.0
