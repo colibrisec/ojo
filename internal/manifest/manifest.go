@@ -19,6 +19,9 @@ var parsers = []Parser{
 	goModParser{},
 	npmLockParser{},
 	pipRequirementsParser{},
+	composerLockParser{},
+	pipfileLockParser{},
+	nugetLockParser{},
 }
 
 // Discover walks root and parses every recognized manifest file it finds.
