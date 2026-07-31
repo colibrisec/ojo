@@ -8,9 +8,11 @@ Each item lists the approach, files touched, new dependencies (if any), and open
 
 ## Medium effort
 
-### New ecosystem parsers, as many as reasonably possible
+### New ecosystem parsers, as many as reasonably possible — ✅ shipped
 
 Same pattern every time: implement `manifest.Parser` (`Match`, `Parse`), register in `manifest.parsers` (`internal/manifest/manifest.go`), add a `model.Ecosystem` constant, write a fixture + test mirroring `manifest_test.go`. The real cost differences are (a) whether the format needs a new dependency and (b) whether it's a fully-resolved lockfile (cheap, accurate) or a source manifest with placeholders/inheritance (has a real ceiling, same shape as the `requirements.txt`-pinned-only precedent).
+
+All five tiers below shipped. Every OSV ecosystem string was verified end-to-end against the live API with a real known-vulnerable package+version before being committed (not just unit-tested) — see the commit history for the actual CVEs each one turned up. Cross-manifest dedup also landed (`manifest.Discover` now dedupes by name+version+ecosystem across files, since PyPI alone has three sources now).
 
 OSV ecosystem strings below are **verified against the live API** with a known-vulnerable package+version each, not assumed — getting one wrong means silent zero-results, the worst failure mode for a security tool.
 
@@ -51,8 +53,6 @@ OSV ecosystem strings below are **verified against the live API** with a known-v
 | Java / Maven | `pom.xml` | `Maven` | Not a lockfile — property placeholders (`${spring.version}`), parent POM inheritance, and `<dependencyManagement>` in other files all affect the real resolved version. **v1 scope:** literal `<version>` values plus same-file `${property}` substitution only; silently skip anything still unresolved (same pattern as `pip.go`). Full Maven resolution (fetching parent POMs) is out of scope. |
 
 **Explicitly out of scope, not just deferred:** `build.gradle`/`build.gradle.kts` (Groovy/Kotlin DSL, not data — meaningfully harder than any of the above; `gradle.lockfile` above covers the same ecosystem without this cost).
-
-Once several of these land, dedupe packages that resolve to the same `(name, ecosystem)` across multiple manifest files in one scan (e.g. a repo with both `requirements.txt` and `Pipfile.lock`) so `osv.Scan` doesn't send/report the same package twice.
 
 ### SARIF output (`-f sarif`)
 
@@ -97,7 +97,7 @@ Currently every scan is a live query to OSV.dev (`internal/osv/client.go`) — n
 
 ## Suggested sequencing
 
-1. Ecosystem parsers, tier by tier (Composer/Pipfile/NuGet → Pub → Cargo/Poetry → Gemfile/Gradle → Maven last) — each is small and independently shippable, cheapest first.
-2. SARIF (independent of the others, unlocks CI integration)
+1. ~~Ecosystem parsers~~ — shipped.
+2. SARIF (independent of the others, unlocks CI integration) — up next.
 3. Config file (unblocks nothing else, but is cheap and improves ergonomics for everything above)
 4. SAST beyond Go / local DB — both are genuinely large; pick whichever has an actual driving need rather than doing both speculatively

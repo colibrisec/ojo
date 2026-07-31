@@ -38,6 +38,27 @@ func TestDiscover(t *testing.T) {
 	}
 }
 
+func TestDiscoverDedupesAcrossManifests(t *testing.T) {
+	dir := t.TempDir()
+	// Same package+version, same ecosystem, reported by two different lockfiles.
+	write(t, dir, "requirements.txt", "requests==2.28.1\n")
+	write(t, dir, "poetry.lock", "[[package]]\nname = \"requests\"\nversion = \"2.28.1\"\n")
+
+	pkgs, err := Discover(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, p := range pkgs {
+		if p.Name == "requests" && p.Version == "2.28.1" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected requests@2.28.1 to be deduped to 1 entry across requirements.txt+poetry.lock, got %d: %+v", count, pkgs)
+	}
+}
+
 func write(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
