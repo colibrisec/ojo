@@ -11,24 +11,26 @@ import (
 )
 
 // Scan pulls ref, reads its OS package database, and returns the installed
-// packages as model.Package values ready for osv.Scan.
-func Scan(ctx context.Context, ref string) ([]model.Package, error) {
+// packages as model.Package values ready for osv.Scan, plus an "os label"
+// (e.g. "debian 13") suitable for a report target header.
+func Scan(ctx context.Context, ref string) ([]model.Package, string, error) {
 	rc, err := extractFS(ctx, ref)
 	if err != nil {
-		return nil, fmt.Errorf("pulling %s: %w", ref, err)
+		return nil, "", fmt.Errorf("pulling %s: %w", ref, err)
 	}
 	defer rc.Close()
 
 	osRelease, apkDB, dpkgStatus, err := readImageFS(tar.NewReader(rc))
 	if err != nil {
-		return nil, fmt.Errorf("reading image filesystem: %w", err)
+		return nil, "", fmt.Errorf("reading image filesystem: %w", err)
 	}
 
 	info := parseOSRelease(osRelease)
 	eco := osEcosystem(info)
 	if eco == "" {
-		return nil, fmt.Errorf("could not determine OS/version for %s (no os-release found); cannot safely scope an OSV query", ref)
+		return nil, "", fmt.Errorf("could not determine OS/version for %s (no os-release found); cannot safely scope an OSV query", ref)
 	}
+	osLabel := strings.TrimSpace(info["ID"] + " " + info["VERSION_ID"])
 
 	var pkgs []model.Package
 	switch {
@@ -37,9 +39,9 @@ func Scan(ctx context.Context, ref string) ([]model.Package, error) {
 	case dpkgStatus != nil:
 		pkgs = parseDpkg(dpkgStatus, eco)
 	case isRPMBased(info):
-		return nil, fmt.Errorf("rpm-based image (%s): rpm package scanning is not supported yet", info["ID"])
+		return nil, "", fmt.Errorf("rpm-based image (%s): rpm package scanning is not supported yet", info["ID"])
 	}
-	return pkgs, nil
+	return pkgs, osLabel, nil
 }
 
 // readImageFS scans a flattened image filesystem tar for os-release and OS

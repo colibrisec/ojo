@@ -19,7 +19,8 @@ func imageCmd() *cobra.Command {
 		Short: "Scan a container image for vulnerable OS packages",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			pkgs, err := image.Scan(cmd.Context(), args[0])
+			ref := args[0]
+			pkgs, osLabel, err := image.Scan(cmd.Context(), ref)
 			if err != nil {
 				return err
 			}
@@ -37,13 +38,14 @@ func imageCmd() *cobra.Command {
 				return fmt.Errorf("querying OSV: %w", err)
 			}
 
+			rep := report.Report{Target: fmt.Sprintf("%s (%s)", ref, osLabel), Findings: findings}
 			switch format {
 			case "json":
-				if err := report.JSON(cmd.OutOrStdout(), findings); err != nil {
+				if err := rep.JSON(cmd.OutOrStdout()); err != nil {
 					return err
 				}
 			default:
-				report.Table(cmd.OutOrStdout(), "", findings)
+				rep.Table(cmd.OutOrStdout(), "")
 			}
 
 			if len(findings) > 0 {

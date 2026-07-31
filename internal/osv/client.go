@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/colibrisec/ojo/internal/model"
@@ -75,7 +76,7 @@ func Scan(ctx context.Context, pkgs []model.Package) ([]model.Finding, error) {
 		f := model.Finding{Package: pkgs[i]}
 		for _, v := range r.Vulns {
 			if d, ok := details[v.ID]; ok {
-				f.Vulns = append(f.Vulns, d)
+				f.Vulns = append(f.Vulns, toVulnerability(d, pkgs[i]))
 			}
 		}
 		f.Vulns = dedupeVulns(f.Vulns)
@@ -86,8 +87,10 @@ func Scan(ctx context.Context, pkgs []model.Package) ([]model.Finding, error) {
 
 type vulnDetail struct {
 	ID       string   `json:"id"`
-	Summary  string   `json:"summary"`
+	Summary  string   `json:"summary"` // short one-liner; populated on GHSA entries
+	Details  string   `json:"details"` // longer description; the only text field Debian/Alpine entries populate
 	Aliases  []string `json:"aliases"`
+	Upstream []string `json:"upstream"` // Debian/Alpine put their CVE ID here instead of aliases
 	Severity []struct {
 		Type  string `json:"type"`
 		Score string `json:"score"`
@@ -98,6 +101,18 @@ type vulnDetail struct {
 	References []struct {
 		URL string `json:"url"`
 	} `json:"references"`
+	Affected []struct {
+		Package struct {
+			Name      string `json:"name"`
+			Ecosystem string `json:"ecosystem"`
+		} `json:"package"`
+		Ranges []struct {
+			Events []struct {
+				Introduced string `json:"introduced"`
+				Fixed      string `json:"fixed"`
+			} `json:"events"`
+		} `json:"ranges"`
+	} `json:"affected"`
 }
 
 func normalizeSeverity(s string) string {
@@ -107,8 +122,58 @@ func normalizeSeverity(s string) string {
 	return s
 }
 
-func fetchDetails(ctx context.Context, ids map[string]struct{}) map[string]model.Vulnerability {
-	out := make(map[string]model.Vulnerability, len(ids))
+// preferredID prefers a CVE alias over a source-specific ID (e.g. OSV's
+// "DEBIAN-CVE-2005-2541" displays as "CVE-2005-2541"), matching how Trivy
+// normalizes Debian/Alpine advisory IDs for display. Debian/Alpine entries
+// carry their CVE under "upstream" rather than "aliases".
+func preferredID(d vulnDetail) string {
+	for _, a := range append(d.Aliases, d.Upstream...) {
+		if strings.HasPrefix(a, "CVE-") {
+			return a
+		}
+	}
+	return d.ID
+}
+
+// summary returns d.Summary, falling back to a truncated d.Details for
+// sources like Debian/Alpine that only populate the longer field.
+func summary(d vulnDetail) string {
+	if d.Summary != "" {
+		return d.Summary
+	}
+	const maxLen = 120
+	s := d.Details
+	if len(s) > maxLen {
+		s = strings.TrimSpace(s[:maxLen]) + "..."
+	}
+	return s
+}
+
+func toVulnerability(d vulnDetail, pkg model.Package) model.Vulnerability {
+	v := model.Vulnerability{ID: preferredID(d), Summary: summary(d), Aliases: d.Aliases, Severity: "UNKNOWN"}
+	if len(d.Severity) > 0 {
+		v.CVSSVector = d.Severity[0].Score
+	}
+	switch {
+	case d.DatabaseSpecific.Severity != "":
+		// GHSA-style human-reviewed label; prefer it when present.
+		v.Severity = normalizeSeverity(d.DatabaseSpecific.Severity)
+	default:
+		// Sources like Debian/Alpine only give a CVSS vector; derive
+		// a label from it ourselves rather than reporting UNKNOWN.
+		if label, ok := cvss3SeverityLabel(v.CVSSVector); ok {
+			v.Severity = label
+		}
+	}
+	if len(d.References) > 0 {
+		v.URL = d.References[0].URL
+	}
+	v.FixedVersion = resolveFixedVersion(d, pkg)
+	return v
+}
+
+func fetchDetails(ctx context.Context, ids map[string]struct{}) map[string]vulnDetail {
+	out := make(map[string]vulnDetail, len(ids))
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, detailConcurrency)
@@ -125,26 +190,8 @@ func fetchDetails(ctx context.Context, ids map[string]struct{}) map[string]model
 			if err := get(ctx, apiBase+"/vulns/"+id, &d); err != nil {
 				return // ponytail: drop vulns whose detail lookup fails, don't fail the scan
 			}
-			v := model.Vulnerability{ID: d.ID, Summary: d.Summary, Aliases: d.Aliases, Severity: "UNKNOWN"}
-			if len(d.Severity) > 0 {
-				v.CVSSVector = d.Severity[0].Score
-			}
-			switch {
-			case d.DatabaseSpecific.Severity != "":
-				// GHSA-style human-reviewed label; prefer it when present.
-				v.Severity = normalizeSeverity(d.DatabaseSpecific.Severity)
-			default:
-				// Sources like Debian/Alpine only give a CVSS vector; derive
-				// a label from it ourselves rather than reporting UNKNOWN.
-				if label, ok := cvss3SeverityLabel(v.CVSSVector); ok {
-					v.Severity = label
-				}
-			}
-			if len(d.References) > 0 {
-				v.URL = d.References[0].URL
-			}
 			mu.Lock()
-			out[id] = v
+			out[id] = d
 			mu.Unlock()
 		}()
 	}
