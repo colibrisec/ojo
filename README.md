@@ -12,7 +12,7 @@ $ ojo image python:3.14-slim  # OS package vulnerabilities in a container image
 Full docs (installation, per-scanner guides, CLI reference, coverage matrix, and an honest list of current limitations) live in **[`docs/`](docs/index.md)**, built with MkDocs Material — build and browse them locally:
 
 ```console
-$ pip install -r docs/requirements.txt
+$ pip install -r docs-requirements.txt
 $ mkdocs serve
 ```
 
