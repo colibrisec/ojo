@@ -5,10 +5,15 @@ package model
 type Ecosystem string
 
 const (
-	EcosystemGo    Ecosystem = "Go"
-	EcosystemNpm   Ecosystem = "npm"
-	EcosystemPyPI  Ecosystem = "PyPI"
-	EcosystemMaven Ecosystem = "Maven"
+	EcosystemGo        Ecosystem = "Go"
+	EcosystemNpm       Ecosystem = "npm"
+	EcosystemPyPI      Ecosystem = "PyPI"
+	EcosystemMaven     Ecosystem = "Maven"
+	EcosystemPackagist Ecosystem = "Packagist"
+	EcosystemNuGet     Ecosystem = "NuGet"
+	EcosystemPub       Ecosystem = "Pub"
+	EcosystemCratesIO  Ecosystem = "crates.io"
+	EcosystemRubyGems  Ecosystem = "RubyGems"
 )
 
 // Package is a dependency found in a manifest or lockfile.

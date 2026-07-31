@@ -8,25 +8,53 @@ Each item lists the approach, files touched, new dependencies (if any), and open
 
 ## Medium effort
 
-### 1. Rust/Cargo ecosystem (`Cargo.lock`)
+### New ecosystem parsers, as many as reasonably possible
 
-**Why first:** `Cargo.lock` is a fully-resolved lockfile — no property placeholders or parent-inheritance to deal with (unlike Maven, below), so it's the cleanest new-ecosystem win.
+Same pattern every time: implement `manifest.Parser` (`Match`, `Parse`), register in `manifest.parsers` (`internal/manifest/manifest.go`), add a `model.Ecosystem` constant, write a fixture + test mirroring `manifest_test.go`. The real cost differences are (a) whether the format needs a new dependency and (b) whether it's a fully-resolved lockfile (cheap, accurate) or a source manifest with placeholders/inheritance (has a real ceiling, same shape as the `requirements.txt`-pinned-only precedent).
 
-- New file: `internal/manifest/cargo.go` implementing the existing `manifest.Parser` interface (`Match("Cargo.lock")`, `Parse(path)`).
-- Format is TOML (`[[package]]` blocks with `name`, `version`, `source`, `dependencies`). No TOML support exists in the module today — add a dependency (`github.com/pelletier/go-toml/v2` or `github.com/BurntSushi/toml`; the former is actively maintained and has a cleaner v2 API).
-- OSV ecosystem string for Rust is `"crates.io"` — add `model.EcosystemCratesIO` alongside the existing `Go`/`npm`/`PyPI`/`Maven` constants.
-- Register in `manifest.parsers` (`internal/manifest/manifest.go`) next to `goModParser{}`, `npmLockParser{}`, `pipRequirementsParser{}`.
-- Test: mirror `manifest_test.go`'s pattern — write a small `Cargo.lock` fixture, assert parsed packages.
+OSV ecosystem strings below are **verified against the live API** with a known-vulnerable package+version each, not assumed — getting one wrong means silent zero-results, the worst failure mode for a security tool.
 
-### 2. Java/Maven ecosystem (`pom.xml`)
+**Tier 1 — free (stdlib `encoding/json`, no new dependency):**
 
-- New file: `internal/manifest/maven.go`, `Match("pom.xml")`, XML via stdlib `encoding/xml` (no new dependency — XML is fully covered by stdlib, unlike TOML).
-- **Real ceiling to design around up front:** `pom.xml` isn't a lockfile. Versions are frequently property placeholders (`${spring.version}`) resolved via a `<properties>` block, parent POM inheritance, or a `<dependencyManagement>` section in a *different* file entirely. A correct, complete implementation means fetching parent POMs and doing full Maven dependency resolution — out of scope.
-  - **v1 scope:** parse literal `<dependency>` blocks with a literal `<version>` (direct string, not `${...}`) from the single file. Resolve simple same-file `${property}` substitution against that file's own `<properties>` block (cheap, catches a large fraction of real-world cases). Silently skip anything still unresolved (same pattern as `pip.go` skipping unpinned `requirements.txt` lines) — document this ceiling in a code comment and in `docs/guide/target/filesystem.md`.
-- `model.EcosystemMaven` already exists — no model change needed there.
-- Decide explicitly: Gradle (`build.gradle`/`build.gradle.kts`) is a Groovy/Kotlin DSL, not data — meaningfully harder to parse than XML. **Not in scope for this item**; call it out as a separate, larger future item if it comes up.
+| Ecosystem | File | OSV ecosystem string | Notes |
+|---|---|---|---|
+| PHP / Composer | `composer.lock` | `Packagist` | Fully-resolved lockfile, flat `packages`/`packages-dev` arrays. |
+| Python / Pipenv | `Pipfile.lock` | `PyPI` | JSON, `default`/`develop` sections. Same ecosystem as existing `requirements.txt` support — packages from both should just merge. |
+| .NET / NuGet | `packages.lock.json` | `NuGet` | JSON, nested by target framework (`"net6.0": {...}`) — flatten across frameworks, dedupe by name. **Caveat:** opt-in file (`RestorePackagesWithLockFile=true`); most .NET projects won't have it yet. |
 
-### 3. SARIF output (`-f sarif`)
+**Tier 2 — free (`gopkg.in/yaml.v3`, already a dependency):**
+
+| Ecosystem | File | OSV ecosystem string | Notes |
+|---|---|---|---|
+| Dart / Pub | `pubspec.lock` | `Pub` | YAML, fully-resolved lockfile. |
+
+**Tier 3 — one new dependency (TOML), amortized across two ecosystems:**
+
+- Add `github.com/pelletier/go-toml/v2` (actively maintained, clean v2 API) once; both parsers below share it.
+
+| Ecosystem | File | OSV ecosystem string | Notes |
+|---|---|---|---|
+| Rust / Cargo | `Cargo.lock` | `crates.io` | Fully-resolved lockfile, `[[package]]` blocks. Cleanest win in this tier — no placeholders. |
+| Python / Poetry | `poetry.lock` | `PyPI` | Same TOML shape as Cargo.lock. Same ecosystem as `requirements.txt`/`Pipfile.lock` — again, merge rather than duplicate-report. |
+
+**Tier 4 — hand-rolled parser, no new dependency (custom text formats):**
+
+| Ecosystem | File | OSV ecosystem string | Notes |
+|---|---|---|---|
+| Ruby / Bundler | `Gemfile.lock` | `RubyGems` | Custom indented text format (`GEM` block, `specs:` section, `  name (version)` lines) — small line-based parser, same idiom as `internal/misconfig/dockerfile.go`'s hand-rolled parser. |
+| Java / Gradle | `gradle.lockfile` | `Maven` | Plain text, one `group:artifact:version=configurations` line per resolved dependency. **Opt-in** (Gradle dependency locking must be enabled) — sidesteps parsing the Groovy/Kotlin DSL entirely by only supporting this resolved-lockfile format, not `build.gradle` itself. |
+
+**Tier 5 — has a real ceiling, do last:**
+
+| Ecosystem | File | OSV ecosystem string | Notes |
+|---|---|---|---|
+| Java / Maven | `pom.xml` | `Maven` | Not a lockfile — property placeholders (`${spring.version}`), parent POM inheritance, and `<dependencyManagement>` in other files all affect the real resolved version. **v1 scope:** literal `<version>` values plus same-file `${property}` substitution only; silently skip anything still unresolved (same pattern as `pip.go`). Full Maven resolution (fetching parent POMs) is out of scope. |
+
+**Explicitly out of scope, not just deferred:** `build.gradle`/`build.gradle.kts` (Groovy/Kotlin DSL, not data — meaningfully harder than any of the above; `gradle.lockfile` above covers the same ecosystem without this cost).
+
+Once several of these land, dedupe packages that resolve to the same `(name, ecosystem)` across multiple manifest files in one scan (e.g. a repo with both `requirements.txt` and `Pipfile.lock`) so `osv.Scan` doesn't send/report the same package twice.
+
+### SARIF output (`-f sarif`)
 
 - Unlocks GitHub code scanning UI integration (`github/codeql-action/upload-sarif` in a workflow) — the most commonly requested CI integration format after JSON.
 - SARIF 2.1.0 is a well-defined JSON schema — hand-write the typed structs and marshal with stdlib `encoding/json`, same approach already used for CycloneDX-adjacent code. No new dependency needed; a SARIF library would be overkill for a schema this mechanical.
@@ -38,7 +66,7 @@ Each item lists the approach, files touched, new dependencies (if any), and open
 
 ## Bigger commitments
 
-### 4. SAST beyond Go
+### SAST beyond Go
 
 Revisit the cgo tradeoff explicitly before starting — this was already decided once (Go-only, stdlib `go/ast`, no cgo) specifically to avoid breaking cross-compilation. Don't silently reverse that; re-confirm it's worth the cost now.
 
@@ -48,7 +76,7 @@ Revisit the cgo tradeoff explicitly before starting — this was already decided
 - Build an initial ruleset per new language mirroring the existing Go ruleset's threat coverage (hardcoded secrets, injection, weak crypto, insecure deserialization, etc. — see `docs/guide/scanner/sast.md` for the Go list to mirror).
 - Update `docs/guide/scanner/sast.md` and `docs/reference/coverage.md` once a language ships.
 
-### 5. Local/offline vulnerability database
+### Local/offline vulnerability database
 
 Currently every scan is a live query to OSV.dev (`internal/osv/client.go`) — no offline/air-gapped mode, and no resilience if OSV.dev is unreachable or rate-limits.
 
@@ -57,7 +85,7 @@ Currently every scan is a live query to OSV.dev (`internal/osv/client.go`) — n
 - `internal/osv/client.go`'s `Scan()` needs a second code path that queries the local DB instead of `POST /v1/querybatch` + `GET /v1/vulns/{id}` — same output shape (`[]model.Finding`), different data source, selected via a new `--offline` flag.
 - This is real infrastructure (sync, versioning, storage growth over time, corruption/partial-update handling) — size it accordingly before committing to a timeline. Only worth building if air-gapped scanning is an actual requirement, not a nice-to-have.
 
-### 6. Config file support (`.ojo.yaml`)
+### Config file support (`.ojo.yaml`)
 
 - Currently flags-only (`--scanners`, `-f/--format`) — no config file, no way to set defaults per-repo.
 - `gopkg.in/yaml.v3` is already a dependency (secrets/misconfig scanners) — hand-roll a small config loader rather than pulling in `viper` (heavyweight for what's needed: a handful of fields, no hierarchical env-var binding requirement).
@@ -69,8 +97,7 @@ Currently every scan is a live query to OSV.dev (`internal/osv/client.go`) — n
 
 ## Suggested sequencing
 
-1. Cargo (small, clean win)
+1. Ecosystem parsers, tier by tier (Composer/Pipfile/NuGet → Pub → Cargo/Poetry → Gemfile/Gradle → Maven last) — each is small and independently shippable, cheapest first.
 2. SARIF (independent of the others, unlocks CI integration)
-3. Maven (medium, has a real scoping decision to make up front)
-4. Config file (unblocks nothing else, but is cheap and improves ergonomics for everything above)
-5. SAST beyond Go / local DB — both are genuinely large; pick whichever has an actual driving need rather than doing both speculatively
+3. Config file (unblocks nothing else, but is cheap and improves ergonomics for everything above)
+4. SAST beyond Go / local DB — both are genuinely large; pick whichever has an actual driving need rather than doing both speculatively
