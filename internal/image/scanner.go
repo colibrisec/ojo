@@ -19,28 +19,16 @@ func Scan(ctx context.Context, ref string) ([]model.Package, error) {
 	}
 	defer rc.Close()
 
-	var osRelease, apkDB, dpkgStatus []byte
-	tr := tar.NewReader(rc)
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("reading image filesystem: %w", err)
-		}
-		switch cleanPath(hdr.Name) {
-		case "etc/os-release":
-			osRelease, _ = io.ReadAll(tr)
-		case "lib/apk/db/installed":
-			apkDB, _ = io.ReadAll(tr)
-		case "var/lib/dpkg/status":
-			dpkgStatus, _ = io.ReadAll(tr)
-		}
+	osRelease, apkDB, dpkgStatus, err := readImageFS(tar.NewReader(rc))
+	if err != nil {
+		return nil, fmt.Errorf("reading image filesystem: %w", err)
 	}
 
 	info := parseOSRelease(osRelease)
 	eco := osEcosystem(info)
+	if eco == "" {
+		return nil, fmt.Errorf("could not determine OS/version for %s (no os-release found); cannot safely scope an OSV query", ref)
+	}
 
 	var pkgs []model.Package
 	switch {
@@ -52,6 +40,34 @@ func Scan(ctx context.Context, ref string) ([]model.Package, error) {
 		return nil, fmt.Errorf("rpm-based image (%s): rpm package scanning is not supported yet", info["ID"])
 	}
 	return pkgs, nil
+}
+
+// readImageFS scans a flattened image filesystem tar for os-release and OS
+// package database files.
+func readImageFS(tr *tar.Reader) (osRelease, apkDB, dpkgStatus []byte, err error) {
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		// /etc/os-release is commonly a symlink to /usr/lib/os-release (tar
+		// symlink entries carry no content, just Linkname), so read both
+		// candidate paths and keep whichever actually has bytes.
+		switch cleanPath(hdr.Name) {
+		case "etc/os-release", "usr/lib/os-release":
+			if b, err := io.ReadAll(tr); err == nil && len(b) > 0 {
+				osRelease = b
+			}
+		case "lib/apk/db/installed":
+			apkDB, _ = io.ReadAll(tr)
+		case "var/lib/dpkg/status":
+			dpkgStatus, _ = io.ReadAll(tr)
+		}
+	}
+	return osRelease, apkDB, dpkgStatus, nil
 }
 
 // cleanPath normalizes a tar entry name to forward-slash form and strips any
