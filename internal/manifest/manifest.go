@@ -28,6 +28,7 @@ var parsers = []Parser{
 	gemfileLockParser{},
 	gradleLockParser{},
 	mavenPomParser{},
+	swiftPackageResolvedParser{},
 }
 
 // Discover walks root and parses every recognized manifest file it finds.

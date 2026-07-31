@@ -15,7 +15,9 @@ What ojo can actually scan today.
 | Pub (Dart) | `pubspec.lock` | ✅ |
 | crates.io (Rust) | `Cargo.lock` | ✅ |
 | RubyGems | `Gemfile.lock` | ✅ |
-| Everything else (Elixir, Swift, C/C++, ...) | — | ❌ Not implemented |
+| SwiftURL | `Package.resolved` (Swift Package Manager) | ✅ |
+| CocoaPods | `Podfile.lock` | ❌ Not possible via OSV — no CocoaPods ecosystem exists in OSV's schema |
+| Everything else (Scala/sbt, Elixir, C/C++, ...) | — | ❌ Not implemented. Scala note: libraries publish under Maven coordinates, so the `Maven` ecosystem above already covers them — the blocker is that sbt's `build.sbt` is a Scala program, not data, same reasoning as `build.gradle` being out of scope. |
 
 ## Operating systems (`ojo image`)
 
