@@ -44,6 +44,10 @@ func imageCmd() *cobra.Command {
 				if err := rep.JSON(cmd.OutOrStdout()); err != nil {
 					return err
 				}
+			case "sarif":
+				if err := rep.SARIF(cmd.OutOrStdout(), ""); err != nil {
+					return err
+				}
 			default:
 				rep.Table(cmd.OutOrStdout(), "")
 			}
@@ -55,6 +59,6 @@ func imageCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, sbom")
+	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, sbom, sarif")
 	return cmd
 }

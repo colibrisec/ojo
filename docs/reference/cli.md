@@ -19,7 +19,7 @@ Usage:
   ojo fs [path] [flags]
 
 Flags:
-  -f, --format string     output format: table, json, sbom (default "table")
+  -f, --format string     output format: table, json, sbom, sarif (default "table")
       --scanners string   comma-separated scanners to run: vuln, secret, misconfig, sast (default "vuln,secret")
 ```
 
@@ -32,7 +32,7 @@ Usage:
   ojo image [ref] [flags]
 
 Flags:
-  -f, --format string   output format: table, json, sbom (default "table")
+  -f, --format string   output format: table, json, sbom, sarif (default "table")
 ```
 
 `ref` is required — any reference `docker pull` would accept (`nginx:1.25`, `myregistry.example.com/app:latest`, `python@sha256:...`).
