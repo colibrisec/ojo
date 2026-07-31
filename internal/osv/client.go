@@ -126,11 +126,19 @@ func fetchDetails(ctx context.Context, ids map[string]struct{}) map[string]model
 				return // ponytail: drop vulns whose detail lookup fails, don't fail the scan
 			}
 			v := model.Vulnerability{ID: d.ID, Summary: d.Summary, Aliases: d.Aliases, Severity: "UNKNOWN"}
-			if d.DatabaseSpecific.Severity != "" {
-				v.Severity = normalizeSeverity(d.DatabaseSpecific.Severity)
-			}
 			if len(d.Severity) > 0 {
 				v.CVSSVector = d.Severity[0].Score
+			}
+			switch {
+			case d.DatabaseSpecific.Severity != "":
+				// GHSA-style human-reviewed label; prefer it when present.
+				v.Severity = normalizeSeverity(d.DatabaseSpecific.Severity)
+			default:
+				// Sources like Debian/Alpine only give a CVSS vector; derive
+				// a label from it ourselves rather than reporting UNKNOWN.
+				if label, ok := cvss3SeverityLabel(v.CVSSVector); ok {
+					v.Severity = label
+				}
 			}
 			if len(d.References) > 0 {
 				v.URL = d.References[0].URL
