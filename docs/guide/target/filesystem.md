@@ -23,6 +23,7 @@ ojo walks the tree and parses every recognized manifest/lockfile it finds:
 | Rust / crates.io | `Cargo.lock` | Fully-resolved lockfile |
 | Ruby / RubyGems | `Gemfile.lock` | Fully-resolved lockfile |
 | Java / Maven | `pom.xml`, `gradle.lockfile` | `gradle.lockfile` is Gradle's opt-in dependency-locking output — fully resolved. `pom.xml` is **not** a lockfile: property placeholders (`${spring.version}`) are resolved against that same file's `<properties>` block only; anything requiring parent-POM inheritance or a `<dependencyManagement>` section elsewhere is silently skipped rather than guessed at. |
+| Swift / SwiftURL | `Package.resolved` | Fully-resolved lockfile (both the pre-Xcode-13 v1 shape and the v2/v3 shape). Branch/revision-pinned dependencies with no tagged version are skipped — OSV's SwiftURL ecosystem matches by SemVer tag. **CocoaPods (`Podfile.lock`) is not supported: OSV has no CocoaPods ecosystem at all**, so there's nowhere to send a query regardless of parsing effort. |
 
 There is no unlocked-manifest support (`package.json` without a lockfile, `build.gradle`/`build.gradle.kts` DSL parsing) — ojo only reads already-resolved dependency data. See [Roadmap & Limitations](../../roadmap.md).
 

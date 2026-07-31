@@ -14,6 +14,7 @@ const (
 	EcosystemPub       Ecosystem = "Pub"
 	EcosystemCratesIO  Ecosystem = "crates.io"
 	EcosystemRubyGems  Ecosystem = "RubyGems"
+	EcosystemSwiftURL  Ecosystem = "SwiftURL"
 )
 
 // Package is a dependency found in a manifest or lockfile.
