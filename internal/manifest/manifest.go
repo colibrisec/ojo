@@ -25,6 +25,8 @@ var parsers = []Parser{
 	pubspecLockParser{},
 	cargoLockParser{},
 	poetryLockParser{},
+	gemfileLockParser{},
+	gradleLockParser{},
 }
 
 // Discover walks root and parses every recognized manifest file it finds.
