@@ -37,8 +37,6 @@ ojo is young. This page is the honest, unvarnished list of what it doesn't do ye
 
 - **No config file** — flags only, nothing like a `.ojo.yaml`.
 - **No `--exit-code`/severity-threshold flag** — any finding at all produces exit code 1; there's no "only fail on HIGH and above."
-- **No SARIF output** (for GitHub code scanning integration).
-- **No tagged releases or prebuilt binaries** — build from source today.
 - **No CI integration guides yet** (GitHub Actions, GitLab CI, etc.) — plain binary invocation works fine in any CI today, there just isn't a written tutorial.
 
 ---
