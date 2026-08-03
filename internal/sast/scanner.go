@@ -1,11 +1,13 @@
-// Package sast statically analyzes Go source for common security anti-patterns
-// using the standard library's go/ast — no external parser dependency.
+// Package sast statically analyzes source for common security anti-patterns:
+// Go via the standard library's go/ast, Python via gotreesitter (a pure-Go,
+// no-cgo tree-sitter runtime — see docs/guide/scanner/sast.md for why cgo
+// was avoided) and its query engine.
 //
 // ponytail ceiling: pattern-matching over syntax only. No taint tracking, no
-// interprocedural analysis, no metavariable pattern language — each rule is
-// a bespoke Go predicate, not a general query. Expect false positives on the
-// "unsanitized input" rules; treat findings as candidates for human triage,
-// not proven vulnerabilities.
+// interprocedural analysis, no cross-file resolution — each rule is a
+// bespoke predicate/query, not a general query language. Expect false
+// positives on the "unsanitized input" rules; treat findings as candidates
+// for human triage, not proven vulnerabilities.
 package sast
 
 import (
@@ -13,7 +15,10 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"strings"
+
+	gts "github.com/odvcencio/gotreesitter"
 
 	"github.com/colibrisec/ojo/internal/model"
 	"github.com/colibrisec/ojo/internal/walk"
@@ -43,19 +48,147 @@ func Scan(root string) ([]model.Issue, error) {
 	var issues []model.Issue
 
 	err := walk.Walk(root, func(path string, d fs.DirEntry) error {
-		if !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-		f, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
-		if err != nil {
-			return nil // ponytail: skip files that don't parse, don't fail the whole scan
-		}
-		for _, r := range rules {
-			issues = append(issues, r.check(f, fset, path)...)
+		switch {
+		case strings.HasSuffix(path, ".go"):
+			f, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
+			if err != nil {
+				return nil // ponytail: skip files that don't parse, don't fail the whole scan
+			}
+			for _, r := range rules {
+				issues = append(issues, r.check(f, fset, path)...)
+			}
+		case strings.HasSuffix(path, ".py"):
+			pyIssues, err := scanPythonFile(path)
+			if err != nil {
+				return nil // ponytail: skip files that don't parse, don't fail the whole scan
+			}
+			issues = append(issues, pyIssues...)
+		case strings.HasSuffix(path, ".php"):
+			phpIssues, err := scanPHPFile(path)
+			if err != nil {
+				return nil // ponytail: skip files that don't parse, don't fail the whole scan
+			}
+			issues = append(issues, phpIssues...)
+		case strings.HasSuffix(path, ".rb"):
+			rubyIssues, err := scanRubyFile(path)
+			if err != nil {
+				return nil // ponytail: skip files that don't parse, don't fail the whole scan
+			}
+			issues = append(issues, rubyIssues...)
+		case strings.HasSuffix(path, ".java"):
+			javaIssues, err := scanJavaFile(path)
+			if err != nil {
+				return nil // ponytail: skip files that don't parse, don't fail the whole scan
+			}
+			issues = append(issues, javaIssues...)
+		default:
+			if lang := jsLangForPath(path); lang != nil {
+				jsIssues, err := scanJSFile(path, lang)
+				if err != nil {
+					return nil // ponytail: skip files that don't parse, don't fail the whole scan
+				}
+				issues = append(issues, jsIssues...)
+			}
 		}
 		return nil
 	})
 	return issues, err
+}
+
+func scanPythonFile(path string) ([]model.Issue, error) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	tree, err := gts.NewParser(pyLang).Parse(src)
+	if err != nil {
+		return nil, err
+	}
+	var issues []model.Issue
+	for _, r := range pyRules {
+		issues = append(issues, r.check(tree.RootNode(), src, path)...)
+	}
+	return issues, nil
+}
+
+func scanPHPFile(path string) ([]model.Issue, error) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	tree, err := gts.NewParser(phpLang).Parse(src)
+	if err != nil {
+		return nil, err
+	}
+	var issues []model.Issue
+	for _, r := range phpRules {
+		issues = append(issues, r.check(tree.RootNode(), src, path)...)
+	}
+	return issues, nil
+}
+
+func scanRubyFile(path string) ([]model.Issue, error) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	tree, err := gts.NewParser(rubyLang).Parse(src)
+	if err != nil {
+		return nil, err
+	}
+	var issues []model.Issue
+	for _, r := range rubyRules {
+		issues = append(issues, r.check(tree.RootNode(), src, path)...)
+	}
+	return issues, nil
+}
+
+func scanJavaFile(path string) ([]model.Issue, error) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	tree, err := gts.NewParser(javaLang).Parse(src)
+	if err != nil {
+		return nil, err
+	}
+	var issues []model.Issue
+	for _, r := range javaRules {
+		issues = append(issues, r.check(tree.RootNode(), src, path)...)
+	}
+	return issues, nil
+}
+
+// jsLangForPath maps a file extension to the grammar that parses it, or nil
+// if the extension isn't JS/TS. .tsx gets its own grammar (JSX support
+// layered onto TypeScript); plain .ts can't contain JSX.
+func jsLangForPath(path string) *gts.Language {
+	switch {
+	case strings.HasSuffix(path, ".tsx"):
+		return tsxLang
+	case strings.HasSuffix(path, ".ts"), strings.HasSuffix(path, ".mts"), strings.HasSuffix(path, ".cts"):
+		return tsLang
+	case strings.HasSuffix(path, ".js"), strings.HasSuffix(path, ".jsx"), strings.HasSuffix(path, ".mjs"), strings.HasSuffix(path, ".cjs"):
+		return jsLang
+	default:
+		return nil
+	}
+}
+
+func scanJSFile(path string, lang *gts.Language) ([]model.Issue, error) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	tree, err := gts.NewParser(lang).Parse(src)
+	if err != nil {
+		return nil, err
+	}
+	var issues []model.Issue
+	for _, r := range jsRules {
+		issues = append(issues, r.check(tree.RootNode(), lang, src, path)...)
+	}
+	return issues, nil
 }
 
 func issueAt(id, severity, path, title, message string, fset *token.FileSet, pos token.Pos) model.Issue {

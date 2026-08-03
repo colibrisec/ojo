@@ -42,6 +42,11 @@ What ojo can actually scan today.
 | Language | Status |
 |---|---|
 | Go | ✅ (`go/ast`-based) |
+| Python | ✅ (`gotreesitter`-based, 11 rules) |
+| JavaScript / TypeScript / TSX | ✅ (`gotreesitter`-based, 11 rules; `.js`/`.jsx`/`.mjs`/`.cjs`/`.ts`/`.mts`/`.cts`/`.tsx`) |
+| PHP | ✅ (`gotreesitter`-based, 10 rules) |
+| Ruby | ✅ (`gotreesitter`-based, 10 rules) |
+| Java | ✅ (`gotreesitter`-based, 9 rules) |
 | Everything else | ❌ — see [SAST scanner](../guide/scanner/sast.md) for why |
 
 ## Vulnerability data source
