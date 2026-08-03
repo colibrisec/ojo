@@ -23,7 +23,7 @@ $ mkdocs serve
 | Vulnerability | Known CVEs in dependency manifests (Go, npm, PyPI) and container OS packages (Alpine, Debian, Ubuntu), via [OSV.dev](https://osv.dev) | ✅ |
 | Secret | Hardcoded credentials, API keys, tokens, private keys | ✅ |
 | Misconfiguration | Dockerfile / Kubernetes / Terraform security misconfigurations | Opt-in (`--scanners misconfig`) |
-| SAST | Injection, weak crypto, and other Go source-level issues (`go/ast`-based) | Opt-in (`--scanners sast`) |
+| SAST | Injection, weak crypto, and other source-level issues in Go (`go/ast`-based), Python, JavaScript/TypeScript, PHP, Ruby, and Java (tree-sitter-based) | Opt-in (`--scanners sast`) |
 
 Every command also supports `-f sbom` for a CycloneDX SBOM.
 
