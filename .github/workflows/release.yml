@@ -67,8 +67,64 @@ jobs:
           name: ojo_${{ matrix.goos }}_${{ matrix.goarch }}
           path: dist/*
 
-  release:
+  package-linux:
     needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - name: Install nfpm
+        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "ojo_linux_*"
+          path: dist
+          merge-multiple: true
+      - name: Build .deb and .rpm packages
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          ver="${VERSION#v}"
+          mkdir -p pkg
+          for arch in amd64 arm64; do
+            cp "dist/ojo_${VERSION}_linux_${arch}" ./ojo
+            chmod +x ./ojo
+            ARCH="$arch" VERSION="$ver" nfpm package --config nfpm.yaml --packager deb --target "pkg/ojo_${ver}_linux_${arch}.deb"
+            ARCH="$arch" VERSION="$ver" nfpm package --config nfpm.yaml --packager rpm --target "pkg/ojo_${ver}_linux_${arch}.rpm"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ojo-packages-linux
+          path: pkg/*
+
+  package-windows:
+    needs: [version, build]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ojo_windows_amd64
+          path: dist
+      - name: Install WiX
+        run: dotnet tool install --global wix
+      - name: Build MSI
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          $ver = $env:VERSION.TrimStart('v') + '.0'
+          $exePath = (Resolve-Path "dist/ojo_${env:VERSION}_windows_amd64.exe").Path
+          wix build installer/ojo.wxs -d "Version=$ver" -d "SourceFile=$exePath" -o "dist/ojo_${env:VERSION}_windows_amd64.msi"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ojo-package-windows
+          path: dist/*.msi
+
+  release:
+    needs: [version, build, package-linux, package-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -105,3 +161,87 @@ jobs:
           tags: |
             ghcr.io/colibrisec/ojo:${{ needs.version.outputs.version }}
             ghcr.io/colibrisec/ojo:latest
+
+  # Pushes an updated Formula/ojo.rb to the colibrisec/homebrew-tap repo.
+  # Requires a HOMEBREW_TAP_TOKEN secret (fine-grained PAT scoped to just
+  # that repo, contents:read+write) — the default GITHUB_TOKEN can't push
+  # to a different repo. If that secret isn't set yet, this job fails but
+  # doesn't block binaries/packages/Docker, which already published above.
+  homebrew:
+    needs: [version, build, release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "ojo_darwin_*"
+          path: dist
+          merge-multiple: true
+      - name: Update Homebrew formula
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          ver="${VERSION#v}"
+          sha_amd64=$(sha256sum "dist/ojo_${VERSION}_darwin_amd64" | cut -d' ' -f1)
+          sha_arm64=$(sha256sum "dist/ojo_${VERSION}_darwin_arm64" | cut -d' ' -f1)
+          cat > ojo.rb <<FORMULA
+          class Ojo < Formula
+            desc "Security scanner for dependencies, secrets, misconfiguration, and code"
+            homepage "https://github.com/colibrisec/ojo"
+            version "${ver}"
+            license "GPL-2.0-only"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/colibrisec/ojo/releases/download/${VERSION}/ojo_${VERSION}_darwin_arm64"
+                sha256 "${sha_arm64}"
+              else
+                url "https://github.com/colibrisec/ojo/releases/download/${VERSION}/ojo_${VERSION}_darwin_amd64"
+                sha256 "${sha_amd64}"
+              end
+            end
+
+            def install
+              bin.install Dir["ojo_*"].first => "ojo"
+            end
+
+            test do
+              system "#{bin}/ojo", "--version"
+            end
+          end
+          FORMULA
+      - name: Push to tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/colibrisec/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          cp ojo.rb tap/Formula/ojo.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/ojo.rb
+          if git diff --cached --quiet; then
+            echo "formula unchanged"
+          else
+            git commit -m "ojo ${VERSION}"
+            git push
+          fi
+
+  # Opens/updates a PR against microsoft/winget-pkgs with the new MSI.
+  # Unlike the other channels this isn't self-hosted — it depends on
+  # Microsoft's community repo accepting the PR (their validation bots run
+  # automatically; a genuinely new package identifier may need a manual
+  # look the first time). Requires a WINGET_TOKEN secret (classic or
+  # fine-grained PAT with public_repo, used to fork winget-pkgs and open
+  # the PR) — same "optional, doesn't block the rest" story as Homebrew.
+  winget:
+    needs: [version, package-windows, release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: vedantmgoyal2009/winget-releaser@v2
+        with:
+          identifier: colibrisec.ojo
+          installers-regex: '\.msi$'
+          version: ${{ needs.version.outputs.version }}
+          token: ${{ secrets.WINGET_TOKEN }}

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Minimal WiX v5 source for ojo.msi: installs ojo.exe to Program Files
+  and appends the install directory to the system PATH. No custom UI —
+  msiexec's default progress dialog is enough for a CLI tool.
+
+  UpgradeCode is a fixed, permanent GUID (generated once) that ties every
+  released version together as "the same product" for MSI's upgrade
+  handling — never change it across releases.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package name="ojo" manufacturer="colibrisec" version="$(var.Version)"
+           upgradeCode="1AD7D5F9-BF28-420A-95ED-5E6BF0977439">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of ojo is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="ojo" />
+    </StandardDirectory>
+
+    <Feature Id="Main">
+      <ComponentRef Id="OjoExe" />
+      <ComponentRef Id="PathEnv" />
+    </Feature>
+
+    <Component Id="OjoExe" Directory="INSTALLFOLDER" Guid="*">
+      <File Id="OjoExeFile" Source="$(var.SourceFile)" Name="ojo.exe" KeyPath="yes" />
+    </Component>
+
+    <Component Id="PathEnv" Directory="INSTALLFOLDER" Guid="*">
+      <RegistryValue Root="HKLM" Key="Software\colibrisec\ojo" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+      <Environment Id="PathAddition" Name="PATH" Value="[INSTALLFOLDER]" Permanent="no" Part="last" Action="set" System="yes" />
+    </Component>
+  </Package>
+</Wix>
