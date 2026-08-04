@@ -18,7 +18,7 @@ ojo is young. This page is the honest, unvarnished list of what it doesn't do ye
 
 - **Secret scanner**: no git history scanning (working tree only), no custom rules file, no suppression/baseline file.
 - **Misconfiguration scanner**: no data-driven policy language (Rego/OPA) — checks are hand-written Go, not a pluggable policy format. Terraform checks don't resolve variables or traverse modules. Kubernetes checks don't render Helm charts or resolve Kustomize overlays. No CloudFormation, Azure ARM, or Ansible support.
-- **SAST scanner**: **Go only.** No taint tracking, no interprocedural analysis, no metavariable pattern language — see [SAST scanner](guide/scanner/sast.md) for the reasoning (adding another language today would mean a cgo dependency, which breaks ojo's pure-Go cross-compilation story).
+- **SAST scanner**: covers Go, Python, JavaScript/TypeScript, PHP, Ruby, and Java. No taint tracking, no interprocedural analysis, no general metavariable pattern language — see [SAST scanner](guide/scanner/sast.md) for the full per-language rule lists and honest ceiling.
 - **License scanning**: not implemented.
 - **VEX**: not implemented.
 
