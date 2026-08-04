@@ -256,7 +256,11 @@ jobs:
       - name: Install snapcraft
         run: sudo snap install snapcraft --classic
       - name: Pack snap
-        run: snapcraft pack
+        # --destructive-mode: build directly on the runner instead of
+        # snapcraft's default LXD-isolated build, which needs a 'lxd' group
+        # membership CI doesn't have. Fine here since the whole runner is
+        # already a disposable, single-purpose environment.
+        run: snapcraft pack --destructive-mode
       - uses: actions/upload-artifact@v4
         with:
           name: ojo-snap-${{ matrix.arch }}
