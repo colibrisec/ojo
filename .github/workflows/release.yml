@@ -132,6 +132,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: "ojo*" # excludes docker/build-push-action's own *.dockerbuild summary artifact
           path: dist
           merge-multiple: true
       - name: Checksums
