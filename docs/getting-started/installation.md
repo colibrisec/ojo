@@ -49,6 +49,22 @@ Each release also publishes native packages, built from the same binaries above:
 
     Download `ojo_vX.Y.Z_windows_amd64.msi` from the [releases page](https://github.com/colibrisec/ojo/releases) and run it — it installs to `Program Files\ojo` and adds that directory to `PATH`.
 
+=== "Linux (Snap)"
+
+    ```console
+    $ sudo snap install ojo-scanner
+    ```
+
+    The Snap Store had already taken the `ojo` name, so the published snap is `ojo-scanner` — the command it installs is still `ojo`.
+
+    This snap runs under [strict confinement](https://snapcraft.io/docs/classic-confinement), so by default it can only read/write inside your `$HOME` and reach the network (for OSV.dev/registry lookups). To scan a path outside `$HOME` — a mounted drive, `/opt`, etc. — connect the extra interface first:
+
+    ```console
+    $ sudo snap connect ojo-scanner:removable-media
+    ```
+
+    Paths elsewhere on the filesystem (e.g. directly under `/etc` or `/srv`) aren't reachable under strict confinement at all; use one of the other install methods on this page if you need to scan those.
+
 ## Container image
 
 Each release also publishes a `scratch`-based image (just the static binary and a CA bundle) to GHCR:
