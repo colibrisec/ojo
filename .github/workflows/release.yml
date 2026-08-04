@@ -239,7 +239,7 @@ jobs:
     needs: [version, package-windows, release]
     runs-on: ubuntu-latest
     steps:
-      - uses: vedantmgoyal2009/winget-releaser@v2
+      - uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e # v2
         with:
           identifier: colibrisec.ojo
           installers-regex: '\.msi$'
