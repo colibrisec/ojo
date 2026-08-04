@@ -38,3 +38,7 @@ $ go build -o ojo .
 ## Status
 
 ojo is young — see [Roadmap & Limitations](docs/roadmap.md) for what isn't supported yet (rpm-based images, non-Go SAST, license scanning, and more).
+
+## License
+
+[GPL-2.0](LICENSE)

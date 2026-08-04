@@ -1,0 +1,17 @@
+name: ojo
+arch: "${ARCH}"
+platform: linux
+version: "${VERSION}"
+section: utils
+priority: optional
+maintainer: "colibrisec <noreply@colibrisec.dev>"
+description: |
+  ojo is an open source security scanner for dependencies, secrets,
+  misconfiguration, and code.
+homepage: "https://github.com/colibrisec/ojo"
+license: "GPL-2.0-only"
+contents:
+  - src: ./ojo
+    dst: /usr/bin/ojo
+    file_info:
+      mode: 0755

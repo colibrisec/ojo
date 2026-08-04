@@ -15,6 +15,40 @@ $ chmod +x ojo_vX.Y.Z_linux_amd64
 
 Releases are cut automatically on the 1st of every month (see `.github/workflows/release.yml`) — `vX.Y.Z` won't be `latest` in the URL above; check the releases page for the current tag.
 
+## Package managers
+
+Each release also publishes native packages, built from the same binaries above:
+
+=== "macOS (Homebrew)"
+
+    ```console
+    $ brew tap colibrisec/tap
+    $ brew install ojo
+    ```
+
+=== "Debian/Ubuntu (.deb)"
+
+    ```console
+    $ curl -LO https://github.com/colibrisec/ojo/releases/latest/download/ojo_X.Y.Z_linux_amd64.deb
+    $ sudo apt install ./ojo_X.Y.Z_linux_amd64.deb
+    ```
+
+=== "Fedora/RHEL (.rpm)"
+
+    ```console
+    $ sudo dnf install https://github.com/colibrisec/ojo/releases/latest/download/ojo_X.Y.Z_linux_amd64.rpm
+    ```
+
+=== "Windows (winget)"
+
+    ```console
+    $ winget install colibrisec.ojo
+    ```
+
+=== "Windows (MSI)"
+
+    Download `ojo_vX.Y.Z_windows_amd64.msi` from the [releases page](https://github.com/colibrisec/ojo/releases) and run it — it installs to `Program Files\ojo` and adds that directory to `PATH`.
+
 ## Container image
 
 Each release also publishes a `scratch`-based image (just the static binary and a CA bundle) to GHCR:
