@@ -108,8 +108,11 @@ jobs:
         with:
           name: ojo_windows_amd64
           path: dist
+      # Pinned below v6: WiX v7 gates its CLI behind accepting a paid Open
+      # Source Maintenance Fee EULA for orgs over $10k/yr revenue (WIX7015)
+      # -- v5.0.2 predates that and matches the wxs schema used here.
       - name: Install WiX
-        run: dotnet tool install --global wix
+        run: dotnet tool install --global wix --version 5.0.2
       - name: Build MSI
         shell: pwsh
         env:
