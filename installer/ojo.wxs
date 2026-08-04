@@ -9,8 +9,8 @@
   handling — never change it across releases.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package name="ojo" manufacturer="colibrisec" version="$(var.Version)"
-           upgradeCode="1AD7D5F9-BF28-420A-95ED-5E6BF0977439">
+  <Package Name="ojo" Manufacturer="colibrisec" Version="$(var.Version)"
+           UpgradeCode="1AD7D5F9-BF28-420A-95ED-5E6BF0977439">
     <MajorUpgrade DowngradeErrorMessage="A newer version of ojo is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
