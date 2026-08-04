@@ -1,0 +1,45 @@
+name: ojo-scanner # "ojo" was already taken in the Snap Store
+version: "0.0.0" # overwritten by the release workflow before packing
+summary: Ojo SCA, SAST, and SBOM tool from Colibrisec
+description: |
+  Find vulnerabilities, misconfigurations, secrets, and generate SBOMs in
+  containers and code repositories -- a single self-contained binary, no
+  daemon, no local database to sync.
+license: GPL-2.0
+website: https://github.com/colibrisec/ojo
+source-code: https://github.com/colibrisec/ojo
+issues: https://github.com/colibrisec/ojo/issues
+grade: stable
+confinement: strict
+base: core24
+
+platforms:
+  amd64:
+    build-on: [amd64]
+    build-for: [amd64]
+  arm64:
+    build-on: [arm64]
+    build-for: [arm64]
+
+apps:
+  ojo:
+    command: bin/ojo
+    # ojo scans arbitrary filesystem paths given on the command line, not
+    # just $HOME -- under strict confinement there's no interface that
+    # grants that by default. `home` covers the common case; users who
+    # need to scan a mounted drive must additionally run
+    # `sudo snap connect ojo-scanner:removable-media` (see
+    # docs/getting-started/installation.md). `network` covers OSV.dev and
+    # registry lookups.
+    plugs: [home, network, removable-media]
+
+parts:
+  ojo:
+    plugin: go
+    source: .
+    build-environment:
+      - CGO_ENABLED: "0"
+    build-snaps:
+      - go/1.26/stable
+    override-build: |
+      go build -trimpath -ldflags "-s -w -X github.com/colibrisec/ojo/internal/cli.Version=${SNAPCRAFT_PROJECT_VERSION}" -o "${CRAFT_PART_INSTALL}/bin/ojo" .

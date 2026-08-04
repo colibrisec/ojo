@@ -232,6 +232,59 @@ jobs:
             git push
           fi
 
+  # Builds the .snap natively per architecture -- plugin: go cross-compiles
+  # fine, but the go plugin's own build tooling still needs to actually run
+  # on a matching host, so this uses GitHub's free hosted arm64 runner
+  # rather than trying to cross-build snaps from a single amd64 host.
+  package-snap:
+    needs: version
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set snap version
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          sed -i "s/^version: \"0.0.0\"/version: \"${VERSION#v}\"/" snap/snapcraft.yaml
+      - name: Install snapcraft
+        run: sudo snap install snapcraft --classic
+      - name: Pack snap
+        run: snapcraft pack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ojo-snap-${{ matrix.arch }}
+          path: "*.snap"
+
+  # Publishes to the Snap Store. Requires a SNAPCRAFT_STORE_CREDENTIALS
+  # secret (`snapcraft export-login` output, tied to whichever account
+  # registered the ojo-scanner name) -- optional/non-blocking like Homebrew
+  # and winget above.
+  snap:
+    needs: [version, package-snap]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "ojo-snap-*"
+          path: dist
+          merge-multiple: true
+      - name: Install snapcraft
+        run: sudo snap install snapcraft --classic
+      - name: Publish to Snap Store
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: |
+          for f in dist/*.snap; do
+            snapcraft upload "$f" --release=stable
+          done
+
   # Opens/updates a PR against microsoft/winget-pkgs with the new MSI.
   # Unlike the other channels this isn't self-hosted — it depends on
   # Microsoft's community repo accepting the PR (their validation bots run
