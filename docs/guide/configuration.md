@@ -13,11 +13,11 @@ $ ojo fs --scanners vuln,secret,misconfig,sast .
 | Value | Runs by default? |
 |---|---|
 | `vuln` | ✅ |
-| `secret` | ✅ |
+| `secret` | ❌ |
 | `misconfig` | ❌ |
 | `sast` | ❌ |
 
-Default: `vuln,secret`. `ojo image` doesn't take `--scanners` — it always runs the vulnerability scanner against OS packages.
+Default: `vuln`. `ojo image` doesn't take `--scanners` — it always runs the vulnerability scanner against OS packages.
 
 ## `-f` / `--format`
 

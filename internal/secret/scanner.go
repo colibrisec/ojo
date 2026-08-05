@@ -39,6 +39,7 @@ func Scan(root string) ([]model.Issue, error) {
 		}
 
 		lineNum := 0
+		isTestFile := isLikelyTestFile(path)
 		scanner := bufio.NewScanner(f)
 		scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 		for scanner.Scan() {
@@ -46,8 +47,12 @@ func Scan(root string) ([]model.Issue, error) {
 			line := scanner.Text()
 			lower := strings.ToLower(line)
 			for _, r := range rules {
-				if !ruleApplies(r, line, lower) {
+				ok, m := ruleApplies(r, line, lower)
+				if !ok {
 					continue
+				}
+				if isTestFile && looksLikePlaceholder(m) {
+					continue // fake/placeholder secret in a recognized test file
 				}
 				issues = append(issues, model.Issue{
 					Scanner:  "secret",
@@ -66,7 +71,7 @@ func Scan(root string) ([]model.Issue, error) {
 	return issues, err
 }
 
-func ruleApplies(r Rule, line, lowerLine string) bool {
+func ruleApplies(r Rule, line, lowerLine string) (bool, string) {
 	if len(r.Keywords) > 0 {
 		matched := false
 		for _, kw := range r.Keywords {
@@ -76,17 +81,17 @@ func ruleApplies(r Rule, line, lowerLine string) bool {
 			}
 		}
 		if !matched {
-			return false
+			return false, ""
 		}
 	}
 	m := r.compiled.FindString(line)
 	if m == "" {
-		return false
+		return false, ""
 	}
 	if r.MinEntropy > 0 && shannonEntropy(m) < r.MinEntropy {
-		return false
+		return false, ""
 	}
-	return true
+	return true, m
 }
 
 // redact keeps a match readable in reports without printing the full secret.

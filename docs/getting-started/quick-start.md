@@ -6,11 +6,14 @@
 $ ojo fs .
 ```
 
-By default this runs the **vulnerability** and **secret** scanners against the current directory. Add `--scanners` to change that:
+By default this runs only the **vulnerability** scanner against the current directory. Add `--scanners` to change that:
 
 ```console
 # Everything ojo can check
 $ ojo fs --scanners vuln,secret,misconfig,sast .
+
+# Vulnerabilities plus hardcoded secrets
+$ ojo fs --scanners vuln,secret .
 
 # Just misconfiguration checks (Dockerfile / Kubernetes / Terraform)
 $ ojo fs --scanners misconfig .
