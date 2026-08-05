@@ -96,6 +96,6 @@ func fsCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, sbom, sarif")
-	cmd.Flags().StringVar(&scanners, "scanners", "vuln,secret", "comma-separated scanners to run: vuln, secret, misconfig, sast")
+	cmd.Flags().StringVar(&scanners, "scanners", "vuln", "comma-separated scanners to run: vuln, secret, misconfig, sast")
 	return cmd
 }

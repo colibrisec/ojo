@@ -20,7 +20,7 @@ Usage:
 
 Flags:
   -f, --format string     output format: table, json, sbom, sarif (default "table")
-      --scanners string   comma-separated scanners to run: vuln, secret, misconfig, sast (default "vuln,secret")
+      --scanners string   comma-separated scanners to run: vuln, secret, misconfig, sast (default "vuln")
 ```
 
 `path` defaults to `.` (the current directory) if omitted.
