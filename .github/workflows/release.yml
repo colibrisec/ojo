@@ -1,9 +1,10 @@
 name: release
 
-# Runs on the 1st of every month and cuts a new v0.0.N release (N bumps by
-# 1 each run — no minor/major logic, ojo isn't at a 1.0 API-stability point
-# yet). workflow_dispatch is for testing the pipeline manually without
-# waiting for the schedule.
+# Runs on the 1st of every month and cuts a new release — major stays 0
+# until ojo hits a 1.0 API-stability point. The scheduled monthly run
+# bumps minor and resets patch (v0.1.5 -> v0.2.0); a workflow_dispatch run
+# between monthly releases bumps only patch (v0.1.5 -> v0.1.6), same
+# semver convention as a minor release vs. a patch release.
 on:
   schedule:
     - cron: "0 0 1 * *"
@@ -25,9 +26,18 @@ jobs:
       - name: Compute next version
         id: bump
         run: |
-          latest=$(git tag -l 'v0.0.*' | sed 's/^v0\.0\.//' | sort -n | tail -1)
-          next=$(( ${latest:-0} + 1 ))
-          echo "version=v0.0.${next}" >> "$GITHUB_OUTPUT"
+          latest=$(git tag -l 'v0.*' | sed 's/^v0\.//' | sort -t. -k1,1n -k2,2n | tail -1)
+          minor="${latest%%.*}"
+          patch="${latest##*.}"
+          minor="${minor:-0}"
+          patch="${patch:-0}"
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            minor=$(( minor + 1 ))
+            patch=0
+          else
+            patch=$(( patch + 1 ))
+          fi
+          echo "version=v0.${minor}.${patch}" >> "$GITHUB_OUTPUT"
 
   build:
     needs: version
