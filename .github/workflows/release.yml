@@ -20,7 +20,7 @@ jobs:
     outputs:
       version: ${{ steps.bump.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Compute next version
@@ -56,8 +56,8 @@ jobs:
           - goos: windows
             goarch: amd64
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.26"
       - name: Build
@@ -72,7 +72,7 @@ jobs:
           name="ojo_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}${ext}"
           mkdir -p dist
           go build -trimpath -ldflags "-s -w -X github.com/colibrisec/ojo/internal/cli.Version=${VERSION}" -o "dist/${name}" .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ojo_${{ matrix.goos }}_${{ matrix.goarch }}
           path: dist/*
@@ -81,13 +81,13 @@ jobs:
     needs: [version, build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.26"
       - name: Install nfpm
         run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: "ojo_linux_*"
           path: dist
@@ -104,7 +104,7 @@ jobs:
             ARCH="$arch" VERSION="$ver" nfpm package --config nfpm.yaml --packager deb --target "pkg/ojo_${ver}_linux_${arch}.deb"
             ARCH="$arch" VERSION="$ver" nfpm package --config nfpm.yaml --packager rpm --target "pkg/ojo_${ver}_linux_${arch}.rpm"
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ojo-packages-linux
           path: pkg/*
@@ -113,8 +113,8 @@ jobs:
     needs: [version, build]
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: ojo_windows_amd64
           path: dist
@@ -131,7 +131,7 @@ jobs:
           $ver = $env:VERSION.TrimStart('v') + '.0'
           $exePath = (Resolve-Path "dist/ojo_${env:VERSION}_windows_amd64.exe").Path
           wix build installer/ojo.wxs -d "Version=$ver" -d "SourceFile=$exePath" -o "dist/ojo_${env:VERSION}_windows_amd64.msi"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ojo-package-windows
           path: dist/*.msi
@@ -140,7 +140,7 @@ jobs:
     needs: [version, build, package-linux, package-windows]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: "ojo*" # excludes docker/build-push-action's own *.dockerbuild summary artifact
           path: dist
@@ -148,7 +148,7 @@ jobs:
       - name: Checksums
         working-directory: dist
         run: sha256sum * > checksums.txt
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.version.outputs.version }}
           name: ${{ needs.version.outputs.version }}
@@ -159,14 +159,14 @@ jobs:
     needs: version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -185,7 +185,7 @@ jobs:
     needs: [version, build, release]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: "ojo_darwin_*"
           path: dist
@@ -257,7 +257,7 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set snap version
         env:
           VERSION: ${{ needs.version.outputs.version }}
@@ -271,7 +271,7 @@ jobs:
       # runs as a non-root user without the same LXD-container privileges).
       - id: snapcraft
         uses: canonical/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1.3.0
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ojo-snap-${{ matrix.arch }}
           path: ${{ steps.snapcraft.outputs.snap }}
@@ -284,7 +284,7 @@ jobs:
     needs: [version, package-snap]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: "ojo-snap-*"
           path: dist
