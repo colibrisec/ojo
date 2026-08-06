@@ -13,7 +13,7 @@ $ sha256sum --ignore-missing -c checksums.txt
 $ chmod +x ojo_vX.Y.Z_linux_amd64
 ```
 
-Releases are cut automatically on the 1st of every month (see `.github/workflows/release.yml`) — `vX.Y.Z` won't be `latest` in the URL above; check the releases page for the current tag.
+Releases are cut automatically on the 1st of every month (see `.github/workflows/release.yml`) — `vX.Y.Z` won't be `latest` in the URL above; check the releases page for the current tag. Major stays `0` until ojo hits a 1.0 API-stability point; the scheduled monthly release bumps minor (`v0.1.5` → `v0.2.0`), and an off-cycle release between monthly ones bumps only patch (`v0.1.5` → `v0.1.6`).
 
 ## Package managers
 

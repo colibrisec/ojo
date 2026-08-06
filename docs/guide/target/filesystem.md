@@ -4,7 +4,7 @@
 $ ojo fs [path]
 ```
 
-Scans a directory (default `.`) for dependency manifests, secrets, misconfiguration, and (Go) source code. Which scanners run is controlled by [`--scanners`](../configuration.md).
+Scans a directory (default `.`) for dependency manifests, secrets, misconfiguration, and source-level SAST issues (Go, Python, JS/TS, PHP, Ruby, Java). Which scanners run is controlled by [`--scanners`](../configuration.md).
 
 `node_modules/`, `.git/`, and `vendor/` are always skipped.
 
