@@ -53,9 +53,12 @@ Each release also publishes native packages, built from the same binaries above:
 
     ```console
     $ sudo snap install ojo-scanner
+    $ sudo snap alias ojo-scanner.ojo ojo
     ```
 
-    The Snap Store had already taken the `ojo` name, so the published snap is `ojo-scanner` — the command it installs is still `ojo`.
+    The Snap Store had already taken the `ojo` name, so the published snap is `ojo-scanner` — and because the snap name and the app name inside it don't match, snap's default command is `ojo-scanner.ojo`, not bare `ojo`. The `snap alias` command above sets up a local `ojo` shortcut to it (one-time, per machine). Without that step, use `ojo-scanner.ojo` directly.
+
+    An automatic alias (so `ojo` works for everyone right after `snap install`, no extra step) has been requested from the Snap Store — that requires a Canonical review/voting process, not something under ojo's own control; this page will drop the manual `snap alias` step once it's approved.
 
     This snap runs under [strict confinement](https://snapcraft.io/docs/classic-confinement), so by default it can only read/write inside your `$HOME` and reach the network (for OSV.dev/registry lookups). To scan a path outside `$HOME` — a mounted drive, `/opt`, etc. — connect the extra interface first:
 
