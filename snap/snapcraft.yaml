@@ -22,7 +22,12 @@ platforms:
     build-for: [arm64]
 
 apps:
-  ojo:
+  # App name matches the snap name (ojo-scanner) so the installed command
+  # is just `ojo-scanner`, no alias needed -- snap only exposes a bare
+  # <app-name> command when app name == snap name; anything else requires
+  # either a manual `snap alias` or a store-approved automatic alias
+  # (external Canonical review, out of scope here).
+  ojo-scanner:
     command: bin/ojo
     # ojo scans arbitrary filesystem paths given on the command line, not
     # just $HOME -- under strict confinement there's no interface that
