@@ -1,5 +1,8 @@
 # ojo
 
+[![ojo-scanner](https://snapcraft.io/ojo-scanner/badge.svg)](https://snapcraft.io/ojo-scanner)
+[![ojo-scanner](https://snapcraft.io/ojo-scanner/trending.svg?name=0)](https://snapcraft.io/ojo-scanner)
+
 ojo is an open source security scanner for dependencies, secrets, misconfiguration, and code — a single self-contained Go binary, no daemon, no local database to sync.
 
 ```console
