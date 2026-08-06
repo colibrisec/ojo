@@ -10,7 +10,20 @@ Usage:
 Available Commands:
   fs          Scan a filesystem path for vulnerabilities, secrets, and misconfiguration
   image       Scan a container image for vulnerable OS packages
+
+Flags:
+  -h, --help      help for ojo
+  -v, --version   version for ojo
 ```
+
+## `ojo --version`
+
+```console
+$ ojo --version
+ojo version v0.1.0
+```
+
+Set at build time via `-ldflags -X .../internal/cli.Version=...` — every published binary/package/image reports the release tag it was built from. Building from source without that flag reports `dev`.
 
 ## `ojo fs`
 

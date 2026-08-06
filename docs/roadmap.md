@@ -11,8 +11,9 @@ ojo is young. This page is the honest, unvarnished list of what it doesn't do ye
 
 ## Ecosystems
 
-- Dependency manifests: only **Go** (`go.mod`), **npm** (`package-lock.json`), and **PyPI** (`requirements.txt`, pinned versions only). No Maven, Rust (Cargo), Ruby (Bundler), PHP (Composer), .NET (NuGet), or unlocked `package.json`.
+- See [Coverage](reference/coverage.md) for the current, authoritative list of supported dependency ecosystems, OS package managers, IaC formats, and SAST languages — it changes often enough that duplicating it here just goes stale.
 - `requirements.txt` parsing is pinned `name==version` lines only — no version ranges, extras, environment markers, or VCS URLs.
+- No unlocked-manifest support anywhere (`package.json` without a lockfile, `build.gradle`/`build.gradle.kts` DSL parsing) — ojo only reads already-resolved dependency data.
 
 ## Scanners
 
