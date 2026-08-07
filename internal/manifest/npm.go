@@ -38,10 +38,10 @@ func (npmLockParser) Parse(path string) ([]model.Package, error) {
 				continue // root package entry has no name
 			}
 			idx := strings.LastIndex(key, "node_modules/")
-			name := key
-			if idx >= 0 {
-				name = key[idx+len("node_modules/"):]
+			if idx < 0 {
+				continue // local workspace member (e.g. "packages/ui"), not a resolvable npm-registry package
 			}
+			name := key[idx+len("node_modules/"):]
 			pkgs = append(pkgs, model.Package{
 				Name: name, Version: p.Version, Ecosystem: model.EcosystemNpm, Source: path,
 			})
