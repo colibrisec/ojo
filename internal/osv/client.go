@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -15,9 +16,16 @@ import (
 )
 
 const (
-	apiBase           = "https://api.osv.dev/v1"
 	detailConcurrency = 10 // ponytail: fixed worker count, tune if OSV rate-limits large scans
+	// OSV doesn't publish a hard limit on queries per querybatch request, but
+	// keeping individual requests to a bounded size avoids ever finding a
+	// real one the hard way (a large monorepo can easily have 1000s of
+	// resolved npm packages).
+	maxBatchSize = 1000
 )
+
+// apiBase is a var (not const) so tests can point it at a local httptest server.
+var apiBase = "https://api.osv.dev/v1"
 
 var httpClient = &http.Client{}
 
@@ -33,12 +41,14 @@ type batchRequest struct {
 	Queries []batchQuery `json:"queries"`
 }
 
+type batchResultEntry struct {
+	Vulns []struct {
+		ID string `json:"id"`
+	} `json:"vulns"`
+}
+
 type batchResult struct {
-	Results []struct {
-		Vulns []struct {
-			ID string `json:"id"`
-		} `json:"vulns"`
-	} `json:"results"`
+	Results []batchResultEntry `json:"results"`
 }
 
 // Scan queries OSV for every package and returns one Finding per vulnerable package.
@@ -47,21 +57,28 @@ func Scan(ctx context.Context, pkgs []model.Package) ([]model.Finding, error) {
 		return nil, nil
 	}
 
-	req := batchRequest{Queries: make([]batchQuery, len(pkgs))}
-	for i, p := range pkgs {
-		req.Queries[i].Package.Name = p.Name
-		req.Queries[i].Package.Ecosystem = string(p.Ecosystem)
-		req.Queries[i].Version = p.Version
-	}
+	var results []batchResultEntry
+	for start := 0; start < len(pkgs); start += maxBatchSize {
+		end := min(start+maxBatchSize, len(pkgs))
+		chunk := pkgs[start:end]
 
-	var result batchResult
-	if err := post(ctx, apiBase+"/querybatch", req, &result); err != nil {
-		return nil, fmt.Errorf("osv querybatch: %w", err)
+		req := batchRequest{Queries: make([]batchQuery, len(chunk))}
+		for i, p := range chunk {
+			req.Queries[i].Package.Name = p.Name
+			req.Queries[i].Package.Ecosystem = string(p.Ecosystem)
+			req.Queries[i].Version = p.Version
+		}
+
+		var result batchResult
+		if err := post(ctx, apiBase+"/querybatch", req, &result); err != nil {
+			return nil, fmt.Errorf("osv querybatch: %w", err)
+		}
+		results = append(results, result.Results...)
 	}
 
 	// Collect the unique vuln IDs we need full details for.
 	idSet := map[string]struct{}{}
-	for _, r := range result.Results {
+	for _, r := range results {
 		for _, v := range r.Vulns {
 			idSet[v.ID] = struct{}{}
 		}
@@ -69,7 +86,7 @@ func Scan(ctx context.Context, pkgs []model.Package) ([]model.Finding, error) {
 	details := fetchDetails(ctx, idSet)
 
 	var findings []model.Finding
-	for i, r := range result.Results {
+	for i, r := range results {
 		if len(r.Vulns) == 0 {
 			continue
 		}
@@ -227,7 +244,8 @@ func do(req *http.Request, out any) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status %d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }
