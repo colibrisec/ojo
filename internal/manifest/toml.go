@@ -8,8 +8,6 @@ import (
 	"github.com/colibrisec/ojo/internal/model"
 )
 
-// tomlPackageList is the shared shape of Cargo.lock and poetry.lock: a flat
-// list of [[package]] tables, each with a name and version.
 type tomlPackageList struct {
 	Package []struct {
 		Name    string `toml:"name"`

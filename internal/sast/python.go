@@ -1,11 +1,3 @@
-// Python rules, using gotreesitter (pure-Go tree-sitter runtime, no cgo —
-// see scanner.go's package doc for why that constraint matters) and its
-// query engine. Each rule is a compiled tree-sitter query plus a small Go
-// predicate for the checks a query alone can't express (e.g. "is this
-// argument a literal or built dynamically").
-//
-// Curated against github.com/semgrep/semgrep-rules' python ruleset: same
-// threat coverage, hand-ported rather than executing semgrep's rule engine.
 package sast
 
 import (
@@ -59,8 +51,6 @@ func pyIssueAt(id, severity, path, title, message string, n *gts.Node) model.Iss
 	}
 }
 
-// fileImports reports whether the source imports modName, via either
-// `import modName` or `from modName import ...`.
 func fileImports(root *gts.Node, src []byte, modName string) bool {
 	q := fileImportsQuery
 	for _, m := range q.ExecuteNode(root, pyLang, src) {
@@ -79,9 +69,6 @@ var fileImportsQuery = mustPyQuery(`[
 	(import_from_statement module_name: (dotted_name (identifier) @mod))
 ]`)
 
-// pyIsDynamicString reports whether n (an argument expression) is built at
-// runtime — an f-string with interpolation, %-formatting, concatenation, or
-// .format(...) — rather than a plain string literal.
 func pyIsDynamicString(n *gts.Node, src []byte) bool {
 	switch n.Type(pyLang) {
 	case "string":
@@ -137,8 +124,10 @@ func checkPyEvalExec(root *gts.Node, src []byte, path string) []model.Issue {
 	return issues
 }
 
-var osSystemQuery = mustPyQuery(`(call function: (attribute object: (identifier) @mod attribute: (identifier) @fn) (#eq? @mod "os") (#eq? @fn "system")) @call`)
-var subprocessShellQuery = mustPyQuery(`(call function: (attribute object: (identifier) @mod attribute: (identifier) @fn) arguments: (argument_list (keyword_argument name: (identifier) @kwname value: (true))) (#eq? @mod "subprocess") (#any-of? @fn "run" "call" "Popen" "check_call" "check_output") (#eq? @kwname "shell")) @call`)
+var (
+	osSystemQuery        = mustPyQuery(`(call function: (attribute object: (identifier) @mod attribute: (identifier) @fn) (#eq? @mod "os") (#eq? @fn "system")) @call`)
+	subprocessShellQuery = mustPyQuery(`(call function: (attribute object: (identifier) @mod attribute: (identifier) @fn) arguments: (argument_list (keyword_argument name: (identifier) @kwname value: (true))) (#eq? @mod "subprocess") (#any-of? @fn "run" "call" "Popen" "check_call" "check_output") (#eq? @kwname "shell")) @call`)
+)
 
 func checkPyCommandInjection(root *gts.Node, src []byte, path string) []model.Issue {
 	var issues []model.Issue
@@ -230,8 +219,10 @@ func checkPyYAMLUnsafeLoad(root *gts.Node, src []byte, path string) []model.Issu
 	return issues
 }
 
-var randomCallQuery = mustPyQuery(`(call function: (attribute object: (identifier) @mod)  (#eq? @mod "random")) @call`)
-var funcDefQuery = mustPyQuery(`(function_definition name: (identifier) @fname body: (block) @body) @def`)
+var (
+	randomCallQuery = mustPyQuery(`(call function: (attribute object: (identifier) @mod)  (#eq? @mod "random")) @call`)
+	funcDefQuery    = mustPyQuery(`(function_definition name: (identifier) @fname body: (block) @body) @def`)
+)
 
 func checkPyInsecureRandom(root *gts.Node, src []byte, path string) []model.Issue {
 	var issues []model.Issue
@@ -251,8 +242,10 @@ func checkPyInsecureRandom(root *gts.Node, src []byte, path string) []model.Issu
 	return issues
 }
 
-var requestsVerifyQuery = mustPyQuery(`(call function: (attribute object: (identifier) @mod) arguments: (argument_list (keyword_argument name: (identifier) @kwname value: (false))) (#eq? @mod "requests") (#eq? @kwname "verify")) @call`)
-var sslUnverifiedQuery = mustPyQuery(`(call function: (attribute object: (identifier) @mod attribute: (identifier) @fn) (#eq? @mod "ssl") (#eq? @fn "_create_unverified_context")) @call`)
+var (
+	requestsVerifyQuery = mustPyQuery(`(call function: (attribute object: (identifier) @mod) arguments: (argument_list (keyword_argument name: (identifier) @kwname value: (false))) (#eq? @mod "requests") (#eq? @kwname "verify")) @call`)
+	sslUnverifiedQuery  = mustPyQuery(`(call function: (attribute object: (identifier) @mod attribute: (identifier) @fn) (#eq? @mod "ssl") (#eq? @fn "_create_unverified_context")) @call`)
+)
 
 func checkPyTLSVerifyDisabled(root *gts.Node, src []byte, path string) []model.Issue {
 	var issues []model.Issue

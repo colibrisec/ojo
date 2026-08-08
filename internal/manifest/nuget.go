@@ -12,7 +12,6 @@ type nugetLockParser struct{}
 func (nugetLockParser) Match(name string) bool { return name == "packages.lock.json" }
 
 type nugetLockFile struct {
-	// keyed by target framework (e.g. "net6.0"), each mapping package name to its entry
 	Dependencies map[string]map[string]struct {
 		Resolved string `json:"resolved"`
 	} `json:"dependencies"`

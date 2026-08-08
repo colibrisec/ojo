@@ -6,11 +6,6 @@ import (
 	"github.com/colibrisec/ojo/internal/model"
 )
 
-// dedupeVulns collapses vulnerabilities that describe the same underlying
-// advisory under different IDs (e.g. a GHSA entry and its PYSEC/CVE aliases
-// are frequently returned as separate OSV records for the same package).
-// Two entries are merged when either's ID appears in the other's Aliases,
-// or they share a common alias (e.g. both alias the same CVE).
 func dedupeVulns(vulns []model.Vulnerability) []model.Vulnerability {
 	if len(vulns) < 2 {
 		return vulns
@@ -63,9 +58,6 @@ func shareAlias(a, b model.Vulnerability) bool {
 	return false
 }
 
-// mergeGroup picks the most informative member as the representative and
-// folds every other member's ID/aliases into its Aliases list so the
-// collapsed advisories are still traceable.
 func mergeGroup(g []model.Vulnerability) model.Vulnerability {
 	rep := g[0]
 	for _, v := range g[1:] {
@@ -92,9 +84,6 @@ func mergeGroup(g []model.Vulnerability) model.Vulnerability {
 	return merged
 }
 
-// isMoreInformative prefers a known severity over UNKNOWN, then a GHSA
-// source (GitHub Security Advisories are consistently well-populated),
-// then the longer summary.
 func isMoreInformative(a, b model.Vulnerability) bool {
 	aKnown, bKnown := a.Severity != "" && a.Severity != "UNKNOWN", b.Severity != "" && b.Severity != "UNKNOWN"
 	if aKnown != bKnown {

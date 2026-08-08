@@ -16,8 +16,6 @@ type swiftPinState struct {
 	Version string `json:"version"`
 }
 
-// swiftResolvedFile handles both the v1 ({"object":{"pins":[...]}}, pre-Xcode
-// 13) and v2/v3 ({"pins":[...]}) Package.resolved shapes.
 type swiftResolvedFile struct {
 	Pins   []swiftPinV2 `json:"pins"` // v2/v3
 	Object *struct {
@@ -62,9 +60,6 @@ func (swiftPackageResolvedParser) Parse(path string) ([]model.Package, error) {
 	return pkgs, nil
 }
 
-// swiftPackage builds a package from a pin, skipping branch/revision-only
-// pins with no tagged version -- OSV's SwiftURL ecosystem matches by
-// SemVer tag, so there's nothing to query without one.
 func swiftPackage(url, version, path string) (model.Package, bool) {
 	if url == "" || version == "" {
 		return model.Package{}, false
@@ -72,9 +67,6 @@ func swiftPackage(url, version, path string) (model.Package, bool) {
 	return model.Package{Name: normalizeSwiftURL(url), Version: version, Ecosystem: model.EcosystemSwiftURL, Source: path}, true
 }
 
-// normalizeSwiftURL matches OSV's SwiftURL package name convention: the
-// repository URL without scheme or ".git" suffix (e.g.
-// "https://github.com/apple/swift-nio.git" -> "github.com/apple/swift-nio").
 func normalizeSwiftURL(url string) string {
 	for _, prefix := range []string{"https://", "http://", "ssh://", "git://"} {
 		url = strings.TrimPrefix(url, prefix)

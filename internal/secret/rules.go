@@ -11,13 +11,12 @@ import (
 //go:embed default_rules.yaml
 var defaultRulesYAML []byte
 
-// Rule is one secret-detection pattern.
 type Rule struct {
 	ID          string   `yaml:"id"`
 	Description string   `yaml:"description"`
 	Regex       string   `yaml:"regex"`
-	Keywords    []string `yaml:"keywords"`   // if set, line must contain one (case-insensitive) before Regex runs
-	MinEntropy  float64  `yaml:"minEntropy"` // 0 = no entropy check
+	Keywords    []string `yaml:"keywords"`
+	MinEntropy  float64  `yaml:"minEntropy"`
 	Severity    string   `yaml:"severity"`
 
 	compiled *regexp.Regexp
@@ -27,7 +26,6 @@ type ruleFile struct {
 	Rules []Rule `yaml:"rules"`
 }
 
-// DefaultRules returns the embedded v1 ruleset, compiled and ready to use.
 func DefaultRules() ([]Rule, error) {
 	var rf ruleFile
 	if err := yaml.Unmarshal(defaultRulesYAML, &rf); err != nil {

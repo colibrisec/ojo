@@ -4,8 +4,6 @@ import "testing"
 
 func TestNpmLockSkipsLocalWorkspaceMembers(t *testing.T) {
 	dir := t.TempDir()
-	// "packages/ui" is a local workspace member (no node_modules/ prefix) --
-	// it has a real version but isn't an npm-registry package OSV can query.
 	write(t, dir, "package-lock.json", `{"packages":{
 		"": {"name": "root"},
 		"packages/ui": {"name": "@myapp/ui", "version": "1.0.0"},

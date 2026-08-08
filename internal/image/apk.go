@@ -7,8 +7,6 @@ import (
 	"github.com/colibrisec/ojo/internal/model"
 )
 
-// parseApk reads an Alpine `lib/apk/db/installed` file: blank-line separated
-// stanzas of two-char-prefixed fields (P: name, V: version).
 func parseApk(data []byte, ecosystem model.Ecosystem) []model.Package {
 	var pkgs []model.Package
 	var name, version string

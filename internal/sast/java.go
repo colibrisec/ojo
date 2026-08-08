@@ -1,12 +1,3 @@
-// Java rules, using gotreesitter's java grammar — same pure-Go, no-cgo
-// tree-sitter runtime already used for Python/JS/PHP/Ruby (see python.go's
-// package doc). The grammar was verified directly against modern Java
-// syntax (records, sealed interfaces, switch expressions, text blocks,
-// var, try-with-resources, instanceof pattern matching) before adopting
-// it — all parsed clean.
-//
-// Curated against github.com/semgrep/semgrep-rules' java ruleset: same
-// threat coverage, hand-ported rather than executing semgrep's rule engine.
 package sast
 
 import (
@@ -58,11 +49,6 @@ func javaIssueAt(id, severity, path, title, message string, n *gts.Node) model.I
 	}
 }
 
-// javaIsDynamicString reports whether n is built at runtime via `+`
-// concatenation rather than being a plain literal. A bare identifier
-// argument is deliberately not flagged, mirroring the same narrow
-// definition used for the other languages. Java has no string
-// interpolation to also check (pre-text-block Java only concatenates).
 func javaIsDynamicString(n *gts.Node, src []byte) bool {
 	if n.Type(javaLang) != "binary_expression" {
 		return false
@@ -99,8 +85,10 @@ func checkJavaHardcodedSecret(root *gts.Node, src []byte, path string) []model.I
 	return issues
 }
 
-var javaRuntimeExecQuery = mustJavaQuery(`(method_invocation object: (method_invocation object: (identifier) @cls name: (identifier) @m1) name: (identifier) @m2 arguments: (argument_list . (_) @arg) (#eq? @cls "Runtime") (#eq? @m1 "getRuntime") (#eq? @m2 "exec")) @call`)
-var javaProcessBuilderQuery = mustJavaQuery(`(object_creation_expression type: (type_identifier) @cls arguments: (argument_list . (_) @arg) (#eq? @cls "ProcessBuilder")) @call`)
+var (
+	javaRuntimeExecQuery    = mustJavaQuery(`(method_invocation object: (method_invocation object: (identifier) @cls name: (identifier) @m1) name: (identifier) @m2 arguments: (argument_list . (_) @arg) (#eq? @cls "Runtime") (#eq? @m1 "getRuntime") (#eq? @m2 "exec")) @call`)
+	javaProcessBuilderQuery = mustJavaQuery(`(object_creation_expression type: (type_identifier) @cls arguments: (argument_list . (_) @arg) (#eq? @cls "ProcessBuilder")) @call`)
+)
 
 func checkJavaCommandInjection(root *gts.Node, src []byte, path string) []model.Issue {
 	var issues []model.Issue
@@ -191,8 +179,10 @@ func checkJavaInsecureDeserialization(root *gts.Node, src []byte, path string) [
 	return issues
 }
 
-var javaRandomNewQuery = mustJavaQuery(`(object_creation_expression type: (type_identifier) @t (#eq? @t "Random")) @call`)
-var javaMethodDefQuery = mustJavaQuery(`(method_declaration name: (identifier) @fname body: (block) @body) @def`)
+var (
+	javaRandomNewQuery = mustJavaQuery(`(object_creation_expression type: (type_identifier) @t (#eq? @t "Random")) @call`)
+	javaMethodDefQuery = mustJavaQuery(`(method_declaration name: (identifier) @fname body: (block) @body) @def`)
+)
 
 func checkJavaInsecureRandom(root *gts.Node, src []byte, path string) []model.Issue {
 	var issues []model.Issue

@@ -7,25 +7,11 @@ import (
 	"strings"
 )
 
-// boxColumn describes one column of a box-drawn table. Wrap>0 word-wraps
-// (and hard-breaks long tokens like URLs) cell text to that width; Wrap==0
-// sizes the column to its widest cell instead.
 type boxColumn struct {
 	Header string
 	Wrap   int
 }
 
-// writeBoxTable renders rows as a Unicode box-drawn table (┌─┬─┐ style,
-// matching Trivy's look). Consecutive rows with an identical, non-empty
-// value in a given column should already be blanked out by the caller
-// (see mergeRuns) so repeated values visually merge; this function only
-// handles layout, wrapping, and borders.
-//
-// ponytail: unlike Trivy, this always draws a full separator between rows
-// (no seamless border-suppression for merged spans). Blanking the repeated
-// values already does most of the decluttering work; replicating Trivy's
-// partial-border merge would be a lot more rendering logic for a smaller
-// visual gain.
 func writeBoxTable(w io.Writer, cols []boxColumn, rows [][]string, colorCol int, color bool) {
 	n := len(cols)
 	widths := make([]int, n)
@@ -128,9 +114,6 @@ func dataLine(cells []string, widths []int, colorCol int, color bool) string {
 	return sb.String()
 }
 
-// wrapText word-wraps s to width, treating "\n" in s as a forced break
-// (used to put a reference URL on its own wrapped line under a title), and
-// hard-breaking any single token longer than width (URLs have no spaces).
 func wrapText(s string, width int) []string {
 	if width <= 0 {
 		return []string{s}
@@ -179,9 +162,6 @@ func wrapParagraph(s string, width int) []string {
 	return lines
 }
 
-// mergeRuns blanks out cells that repeat the immediately preceding row's
-// value in that column, so consecutive identical values read as one merged
-// span (matching Trivy's Library/Severity/Status/Installed Version columns).
 func mergeRuns(rows [][]string, cols []int) {
 	prev := make([]string, len(cols))
 	first := true
@@ -198,8 +178,6 @@ func mergeRuns(rows [][]string, cols []int) {
 	}
 }
 
-// relPath renders path relative to root for display; falls back to path
-// unchanged if root is empty or the path isn't under it.
 func relPath(root, path string) string {
 	if root == "" {
 		return path

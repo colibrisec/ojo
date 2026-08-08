@@ -8,7 +8,6 @@ import (
 	"github.com/colibrisec/ojo/internal/model"
 )
 
-// Instruction is one parsed Dockerfile instruction (e.g. FROM, RUN, USER).
 type Instruction struct {
 	Cmd  string // upper-cased, e.g. "FROM"
 	Args string
@@ -19,7 +18,6 @@ func isDockerfile(name string) bool {
 	return name == "Dockerfile" || strings.HasPrefix(name, "Dockerfile.")
 }
 
-// parseDockerfile handles backslash line continuation and strips comments/blank lines.
 func parseDockerfile(data []byte) []Instruction {
 	var out []Instruction
 	scanner := bufio.NewScanner(strings.NewReader(string(data)))

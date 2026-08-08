@@ -14,12 +14,6 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 )
 
-// extractFS resolves ref against its registry and returns a tar stream of
-// the image's flattened (whiteout-resolved) filesystem. Defaults to
-// linux/amd64.
-//
-// ponytail: single fixed platform for v1; add a --platform flag if
-// multi-arch scanning is needed.
 func extractFS(ctx context.Context, ref string) (io.ReadCloser, error) {
 	r, err := name.ParseReference(ref)
 	if err != nil {

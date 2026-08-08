@@ -13,8 +13,6 @@ type pipRequirementsParser struct{}
 
 func (pipRequirementsParser) Match(name string) bool { return name == "requirements.txt" }
 
-// ponytail: pinned "name==version" only, no extras/markers/VCS urls. Add a real
-// PEP 508 parser if requirements.txt with markers/extras shows up in practice.
 var pipPinRe = regexp.MustCompile(`^([A-Za-z0-9_.\-]+)\s*==\s*([A-Za-z0-9_.\-]+)`)
 
 func (pipRequirementsParser) Parse(path string) ([]model.Package, error) {

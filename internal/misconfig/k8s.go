@@ -9,13 +9,6 @@ import (
 	"github.com/colibrisec/ojo/internal/model"
 )
 
-// scanK8sManifest reads every YAML document in path and, for ones that look
-// like a Kubernetes object (apiVersion+kind present), runs the checks.
-//
-// ponytail: walks generic map[string]any rather than typed
-// k8s.io/api structs, so it works uniformly across Pod/Deployment/
-// StatefulSet/DaemonSet/Job/CronJob without importing that dependency tree
-// or hand-writing a struct per kind.
 func scanK8sManifest(path string) ([]model.Issue, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -30,7 +23,7 @@ func scanK8sManifest(path string) ([]model.Issue, error) {
 			break // EOF or a non-YAML/malformed doc; stop rather than fail the whole scan
 		}
 		if doc["apiVersion"] == nil || doc["kind"] == nil {
-			continue // not a Kubernetes object (e.g. this is a Helm values file etc.)
+			continue
 		}
 		issues = append(issues, k8sChecks(doc, path)...)
 	}
@@ -82,7 +75,6 @@ func k8sChecks(doc map[string]any, path string) []model.Issue {
 	return issues
 }
 
-// findBool searches doc (and any nested maps) for the first occurrence of key.
 func findBool(v any, key string) (bool, bool) {
 	m, ok := v.(map[string]any)
 	if !ok {

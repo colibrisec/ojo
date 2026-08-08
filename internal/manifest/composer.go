@@ -43,8 +43,6 @@ func (composerLockParser) Parse(path string) ([]model.Package, error) {
 	return pkgs, nil
 }
 
-// trimVersionPrefix strips a leading "v" (composer.lock versions are
-// frequently "v1.2.3"), which OSV's Packagist ecosystem doesn't expect.
 func trimVersionPrefix(v string) string {
 	if len(v) > 1 && (v[0] == 'v' || v[0] == 'V') && v[1] >= '0' && v[1] <= '9' {
 		return v[1:]

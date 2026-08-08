@@ -1,12 +1,3 @@
-// Ruby rules, using gotreesitter's ruby grammar — same pure-Go, no-cgo
-// tree-sitter runtime already used for Python/JS/PHP (see python.go's
-// package doc). The grammar was verified directly against modern Ruby
-// syntax (safe navigation, pattern matching, endless methods, keyword
-// arguments, hash shorthand, heredocs, numbered block parameters) before
-// adopting it — all parsed clean.
-//
-// Curated against github.com/semgrep/semgrep-rules' ruby ruleset: same
-// threat coverage, hand-ported rather than executing semgrep's rule engine.
 package sast
 
 import (
@@ -59,10 +50,6 @@ func rubyIssueAt(id, severity, path, title, message string, n *gts.Node) model.I
 	}
 }
 
-// rubyIsDynamicString reports whether n is built at runtime — string
-// interpolation (#{...}) or `+` concatenation — rather than a plain
-// literal. A bare identifier argument is deliberately not flagged, mirroring
-// the same narrow definition used for Go/Python/JS/PHP.
 func rubyIsDynamicString(n *gts.Node, src []byte) bool {
 	switch n.Type(rubyLang) {
 	case "string", "subshell":
@@ -115,8 +102,10 @@ func checkRubyEvalDetected(root *gts.Node, src []byte, path string) []model.Issu
 	return issues
 }
 
-var rubyCommandCallQuery = mustRubyQuery(`(call method: (identifier) @m arguments: (argument_list . (_) @arg) (#any-of? @m "system" "exec" "spawn")) @call`)
-var rubySubshellQuery = mustRubyQuery(`(subshell (interpolation) @interp) @sub`)
+var (
+	rubyCommandCallQuery = mustRubyQuery(`(call method: (identifier) @m arguments: (argument_list . (_) @arg) (#any-of? @m "system" "exec" "spawn")) @call`)
+	rubySubshellQuery    = mustRubyQuery(`(subshell (interpolation) @interp) @sub`)
+)
 
 func checkRubyCommandInjection(root *gts.Node, src []byte, path string) []model.Issue {
 	var issues []model.Issue
@@ -169,8 +158,10 @@ func checkRubyWeakHash(root *gts.Node, src []byte, path string) []model.Issue {
 	return issues
 }
 
-var rubyMarshalLoadQuery = mustRubyQuery(`(call receiver: (constant) @recv method: (identifier) @meth (#eq? @recv "Marshal") (#eq? @meth "load")) @call`)
-var rubyYAMLLoadQuery = mustRubyQuery(`(call receiver: (constant) @recv method: (identifier) @meth (#eq? @recv "YAML") (#eq? @meth "load")) @call`)
+var (
+	rubyMarshalLoadQuery = mustRubyQuery(`(call receiver: (constant) @recv method: (identifier) @meth (#eq? @recv "Marshal") (#eq? @meth "load")) @call`)
+	rubyYAMLLoadQuery    = mustRubyQuery(`(call receiver: (constant) @recv method: (identifier) @meth (#eq? @recv "YAML") (#eq? @meth "load")) @call`)
+)
 
 func checkRubyInsecureDeserialization(root *gts.Node, src []byte, path string) []model.Issue {
 	var issues []model.Issue
@@ -187,8 +178,10 @@ func checkRubyInsecureDeserialization(root *gts.Node, src []byte, path string) [
 	return issues
 }
 
-var rubyRandCallQuery = mustRubyQuery(`(call method: (identifier) @m (#eq? @m "rand")) @call`)
-var rubyMethodDefQuery = mustRubyQuery(`(method name: (identifier) @fname body: (body_statement) @body) @def`)
+var (
+	rubyRandCallQuery  = mustRubyQuery(`(call method: (identifier) @m (#eq? @m "rand")) @call`)
+	rubyMethodDefQuery = mustRubyQuery(`(method name: (identifier) @fname body: (body_statement) @body) @def`)
+)
 
 func checkRubyInsecureRandom(root *gts.Node, src []byte, path string) []model.Issue {
 	var issues []model.Issue
@@ -249,9 +242,6 @@ func checkRubyOpenRedirect(root *gts.Node, src []byte, path string) []model.Issu
 	return issues
 }
 
-// rubyRootedAtParams reports whether n is an element-reference/call chain
-// (e.g. params[:url], params.permit(:url)[:url]) whose root identifier is
-// params/request.
 func rubyRootedAtParams(n *gts.Node, src []byte) bool {
 	for {
 		switch n.Type(rubyLang) {

@@ -1,5 +1,3 @@
-// Package osv queries the OSV.dev vulnerability database (https://osv.dev)
-// for known advisories affecting a set of packages.
 package osv
 
 import (
@@ -16,15 +14,10 @@ import (
 )
 
 const (
-	detailConcurrency = 10 // ponytail: fixed worker count, tune if OSV rate-limits large scans
-	// OSV doesn't publish a hard limit on queries per querybatch request, but
-	// keeping individual requests to a bounded size avoids ever finding a
-	// real one the hard way (a large monorepo can easily have 1000s of
-	// resolved npm packages).
-	maxBatchSize = 1000
+	detailConcurrency = 10
+	maxBatchSize      = 1000
 )
 
-// apiBase is a var (not const) so tests can point it at a local httptest server.
 var apiBase = "https://api.osv.dev/v1"
 
 var httpClient = &http.Client{}
@@ -51,7 +44,6 @@ type batchResult struct {
 	Results []batchResultEntry `json:"results"`
 }
 
-// Scan queries OSV for every package and returns one Finding per vulnerable package.
 func Scan(ctx context.Context, pkgs []model.Package) ([]model.Finding, error) {
 	if len(pkgs) == 0 {
 		return nil, nil
@@ -76,7 +68,6 @@ func Scan(ctx context.Context, pkgs []model.Package) ([]model.Finding, error) {
 		results = append(results, result.Results...)
 	}
 
-	// Collect the unique vuln IDs we need full details for.
 	idSet := map[string]struct{}{}
 	for _, r := range results {
 		for _, v := range r.Vulns {
@@ -104,16 +95,16 @@ func Scan(ctx context.Context, pkgs []model.Package) ([]model.Finding, error) {
 
 type vulnDetail struct {
 	ID       string   `json:"id"`
-	Summary  string   `json:"summary"` // short one-liner; populated on GHSA entries
-	Details  string   `json:"details"` // longer description; the only text field Debian/Alpine entries populate
+	Summary  string   `json:"summary"`
+	Details  string   `json:"details"`
 	Aliases  []string `json:"aliases"`
-	Upstream []string `json:"upstream"` // Debian/Alpine put their CVE ID here instead of aliases
+	Upstream []string `json:"upstream"`
 	Severity []struct {
 		Type  string `json:"type"`
 		Score string `json:"score"`
 	} `json:"severity"`
 	DatabaseSpecific struct {
-		Severity string `json:"severity"` // e.g. CRITICAL/HIGH/MODERATE/LOW, present on GHSA-sourced advisories
+		Severity string `json:"severity"`
 	} `json:"database_specific"`
 	References []struct {
 		URL string `json:"url"`
@@ -134,15 +125,11 @@ type vulnDetail struct {
 
 func normalizeSeverity(s string) string {
 	if s == "MODERATE" {
-		return "MEDIUM" // align with the Issue.Severity vocabulary used by secret/misconfig/sast
+		return "MEDIUM"
 	}
 	return s
 }
 
-// preferredID prefers a CVE alias over a source-specific ID (e.g. OSV's
-// "DEBIAN-CVE-2005-2541" displays as "CVE-2005-2541"), matching how Trivy
-// normalizes Debian/Alpine advisory IDs for display. Debian/Alpine entries
-// carry their CVE under "upstream" rather than "aliases".
 func preferredID(d vulnDetail) string {
 	for _, a := range append(d.Aliases, d.Upstream...) {
 		if strings.HasPrefix(a, "CVE-") {
@@ -152,8 +139,6 @@ func preferredID(d vulnDetail) string {
 	return d.ID
 }
 
-// summary returns d.Summary, falling back to a truncated d.Details for
-// sources like Debian/Alpine that only populate the longer field.
 func summary(d vulnDetail) string {
 	if d.Summary != "" {
 		return d.Summary
@@ -176,8 +161,6 @@ func toVulnerability(d vulnDetail, pkg model.Package) model.Vulnerability {
 		// GHSA-style human-reviewed label; prefer it when present.
 		v.Severity = normalizeSeverity(d.DatabaseSpecific.Severity)
 	default:
-		// Sources like Debian/Alpine only give a CVSS vector; derive
-		// a label from it ourselves rather than reporting UNKNOWN.
 		if label, ok := cvss3SeverityLabel(v.CVSSVector); ok {
 			v.Severity = label
 		}
@@ -205,7 +188,7 @@ func fetchDetails(ctx context.Context, ids map[string]struct{}) map[string]vulnD
 
 			var d vulnDetail
 			if err := get(ctx, apiBase+"/vulns/"+id, &d); err != nil {
-				return // ponytail: drop vulns whose detail lookup fails, don't fail the scan
+				return
 			}
 			mu.Lock()
 			out[id] = d

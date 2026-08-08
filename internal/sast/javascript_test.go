@@ -82,11 +82,6 @@ func TestJSScanNoFalsePositiveOnLiteralCommand(t *testing.T) {
 	}
 }
 
-// Regression test: jsIsDynamicString's binary_expression branch reads the
-// operator token's text to check for "+" — an earlier version passed a nil
-// source buffer to Text(), which silently always returns "", so string
-// concatenation (as opposed to template-literal interpolation) never
-// actually fired this rule. Exercise it directly against real source bytes.
 func TestJSSQLInjectionViaConcatenation(t *testing.T) {
 	dir := t.TempDir()
 	src := "function run(db, userInput) {\n    db.query(\"SELECT * FROM t WHERE id=\" + userInput);\n}\n"

@@ -5,12 +5,6 @@ import (
 	"strings"
 )
 
-// cvss3SeverityLabel derives a CRITICAL/HIGH/MEDIUM/LOW/NONE label from a
-// CVSS v3.0/v3.1 base vector, for advisory sources (Debian, Alpine, ...)
-// that supply a CVSS vector but no pre-computed severity label the way
-// GHSA's database_specific.severity does. Returns ok=false for anything
-// that isn't a well-formed CVSS v3.x base vector (e.g. CVSS v2, or a vector
-// missing a required metric).
 func cvss3SeverityLabel(vector string) (string, bool) {
 	score, ok := cvss3BaseScore(vector)
 	if !ok {
@@ -109,8 +103,6 @@ func cvss3BaseScore(vector string) (float64, bool) {
 	return base, true
 }
 
-// cvssRoundUp implements the CVSS spec's "Roundup" function: round to the
-// nearest 0.1, always rounding up (not standard rounding).
 func cvssRoundUp(x float64) float64 {
 	intInput := int64(math.Round(x * 100000))
 	if intInput%10000 == 0 {

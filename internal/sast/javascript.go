@@ -1,18 +1,3 @@
-// JavaScript/TypeScript/TSX rules, using gotreesitter's javascript,
-// typescript, and tsx grammars — same pure-Go, no-cgo tree-sitter runtime
-// already used for Python (see python.go's package doc). All three grammars
-// were verified directly against modern syntax (optional chaining, template
-// literals, async/await, private fields, decorators, generics, JSX) before
-// adopting them, same methodology as Python's gpython/gotreesitter check.
-//
-// The three grammars share node types/fields for the plain-JS subset (a
-// query compiles identically against all three); JSX-specific queries only
-// compile against javascript/tsx, since .ts files can't contain JSX — hence
-// triQuery below carries a nil *Query for languages a rule doesn't apply to.
-//
-// Curated against github.com/semgrep/semgrep-rules' javascript/typescript
-// rulesets: same threat coverage, hand-ported rather than executing
-// semgrep's rule engine.
 package sast
 
 import (
@@ -30,9 +15,6 @@ var (
 	tsxLang = grammars.TsxLanguage()
 )
 
-// triQuery holds a query compiled separately per grammar (Query is bound to
-// the Language it was compiled against). A nil entry means the rule doesn't
-// apply to that grammar (e.g. JSX-only rules against plain TypeScript).
 type triQuery struct {
 	js, ts, tsx *gts.Query
 }
@@ -62,8 +44,6 @@ func mustTriQuery(src string) triQuery {
 	return triQuery{js: mustQueryFor(jsLang, src), ts: mustQueryFor(tsLang, src), tsx: mustQueryFor(tsxLang, src)}
 }
 
-// mustJSXQuery compiles a query only for javascript/tsx — TypeScript files
-// can't contain JSX, and the jsx_* node types don't exist in that grammar.
 func mustJSXQuery(src string) triQuery {
 	return triQuery{js: mustQueryFor(jsLang, src), tsx: mustQueryFor(tsxLang, src)}
 }
@@ -100,10 +80,6 @@ func jsIssueAt(id, severity, path, title, message string, n *gts.Node) model.Iss
 	}
 }
 
-// jsIsDynamicString reports whether n is built at runtime — a template
-// literal with an interpolation, or `+` concatenation — rather than a plain
-// string literal. Deliberately narrow (mirrors go/python's isDynamicString):
-// a bare identifier argument is not flagged, only literal-cum-substitution.
 func jsIsDynamicString(n *gts.Node, lang *gts.Language, src []byte) bool {
 	switch n.Type(lang) {
 	case "template_string":
@@ -214,8 +190,10 @@ func checkJSWeakHash(root *gts.Node, lang *gts.Language, src []byte, path string
 	return issues
 }
 
-var mathRandomQuery = mustTriQuery(`(call_expression function: (member_expression object: (identifier) @obj property: (property_identifier) @fn) (#eq? @obj "Math") (#eq? @fn "random")) @call`)
-var jsFuncDeclQuery = mustTriQuery(`(function_declaration name: (identifier) @fname body: (statement_block) @body) @def`)
+var (
+	mathRandomQuery = mustTriQuery(`(call_expression function: (member_expression object: (identifier) @obj property: (property_identifier) @fn) (#eq? @obj "Math") (#eq? @fn "random")) @call`)
+	jsFuncDeclQuery = mustTriQuery(`(function_declaration name: (identifier) @fname body: (statement_block) @body) @def`)
+)
 
 func checkJSInsecureRandom(root *gts.Node, lang *gts.Language, src []byte, path string) []model.Issue {
 	var issues []model.Issue
@@ -296,8 +274,6 @@ func checkJSOpenRedirect(root *gts.Node, lang *gts.Language, src []byte, path st
 	return issues
 }
 
-// rootedAtRequest reports whether n is a member-expression chain (e.g.
-// req.query.url) whose root identifier looks like the request object.
 func rootedAtRequest(n *gts.Node, lang *gts.Language, src []byte) bool {
 	for n.Type(lang) == "member_expression" {
 		obj := n.ChildByFieldName("object", lang)

@@ -12,11 +12,6 @@ type gradleLockParser struct{}
 
 func (gradleLockParser) Match(name string) bool { return name == "gradle.lockfile" }
 
-// Parse reads Gradle's dependency-locking output: one
-// "group:artifact:version=configurations" line per resolved dependency.
-// This is an opt-in file (dependency locking must be enabled) -- ojo
-// doesn't parse build.gradle/build.gradle.kts itself (Groovy/Kotlin DSL,
-// not data).
 func (gradleLockParser) Parse(path string) ([]model.Package, error) {
 	f, err := os.Open(path)
 	if err != nil {

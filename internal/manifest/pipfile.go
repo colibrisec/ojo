@@ -45,8 +45,6 @@ func (pipfileLockParser) Parse(path string) ([]model.Package, error) {
 	return pkgs, nil
 }
 
-// pipfilePackage returns ok=false for git/path dependencies, which have no
-// pinned "==version" entry to report.
 func pipfilePackage(name string, e pipfileEntry, path string) (model.Package, bool) {
 	if !strings.HasPrefix(e.Version, "==") {
 		return model.Package{}, false

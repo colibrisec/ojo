@@ -9,8 +9,6 @@ import (
 	"github.com/colibrisec/ojo/internal/model"
 )
 
-// parseDpkg reads a Debian/Ubuntu `var/lib/dpkg/status` file: RFC822-style
-// stanzas separated by blank lines, filtered to currently-installed packages.
 func parseDpkg(data []byte, ecosystem model.Ecosystem) []model.Package {
 	var pkgs []model.Package
 	reader := textproto.NewReader(bufio.NewReader(bytes.NewReader(data)))
