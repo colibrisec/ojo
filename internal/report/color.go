@@ -16,8 +16,6 @@ const (
 	ansiGray    = "\x1b[90m"
 )
 
-// isColorWriter reports whether w is an interactive terminal that should
-// receive ANSI colors, honoring the NO_COLOR convention.
 func isColorWriter(w io.Writer) bool {
 	if os.Getenv("NO_COLOR") != "" {
 		return false
@@ -44,7 +42,6 @@ func severityCode(sev string) string {
 	}
 }
 
-// severityRank orders severities from most to least urgent for sorting; unknown values sort last.
 func severityRank(sev string) int {
 	switch sev {
 	case "CRITICAL":

@@ -1,5 +1,3 @@
-// Package secret scans source files for hardcoded credentials using a
-// regex + keyword + entropy rule set (see default_rules.yaml).
 package secret
 
 import (
@@ -14,9 +12,8 @@ import (
 	"github.com/colibrisec/ojo/internal/walk"
 )
 
-const maxFileSize = 5 << 20 // 5MB; ponytail: skip large files rather than chunk-scan them
+const maxFileSize = 5 << 20
 
-// Scan walks root and returns one Issue per secret-shaped match.
 func Scan(root string) ([]model.Issue, error) {
 	rules, err := DefaultRules()
 	if err != nil {
@@ -30,7 +27,7 @@ func Scan(root string) ([]model.Issue, error) {
 		}
 		f, err := os.Open(path)
 		if err != nil {
-			return nil // ponytail: unreadable file, skip rather than fail the scan
+			return nil
 		}
 		defer f.Close()
 
@@ -52,7 +49,7 @@ func Scan(root string) ([]model.Issue, error) {
 					continue
 				}
 				if isTestFile && looksLikePlaceholder(m) {
-					continue // fake/placeholder secret in a recognized test file
+					continue
 				}
 				issues = append(issues, model.Issue{
 					Scanner:  "secret",
@@ -94,7 +91,6 @@ func ruleApplies(r Rule, line, lowerLine string) (bool, string) {
 	return true, m
 }
 
-// redact keeps a match readable in reports without printing the full secret.
 func redact(line string) string {
 	line = strings.TrimSpace(line)
 	if len(line) > 80 {

@@ -22,8 +22,6 @@ func newIssue(ruleID, severity, path string, line int, title, message string) mo
 	}
 }
 
-// Scan walks root and runs Dockerfile, Kubernetes, and Terraform checks
-// against every recognized file.
 func Scan(root string) ([]model.Issue, error) {
 	var issues []model.Issue
 	err := walk.Walk(root, func(path string, d fs.DirEntry) error {

@@ -13,9 +13,6 @@ type gemfileLockParser struct{}
 
 func (gemfileLockParser) Match(name string) bool { return name == "Gemfile.lock" }
 
-// specLineRe matches a top-level gem entry under a "specs:" section, e.g.
-// "    rails (7.0.4)" or "    nokogiri (1.10.0-x86_64-linux)". Nested
-// sub-dependency lines are indented deeper (6+ spaces) and are skipped.
 var specLineRe = regexp.MustCompile(`^ {4}(\S+) \(([^)]+)\)`)
 
 func (gemfileLockParser) Parse(path string) ([]model.Package, error) {

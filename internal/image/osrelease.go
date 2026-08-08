@@ -37,11 +37,6 @@ func isRPMBased(info map[string]string) bool {
 	return false
 }
 
-// osEcosystem builds the OSV.dev ecosystem string for the detected distro.
-//
-// ponytail: Ubuntu LTS detection is a release-history heuristic (even year,
-// April release), not derived from a Debian/Ubuntu API. Verify against
-// OSV's actual ecosystem list if scanning Ubuntu images matters to you.
 func osEcosystem(info map[string]string) model.Ecosystem {
 	id := info["ID"]
 	version := info["VERSION_ID"]

@@ -2,8 +2,6 @@ package secret
 
 import "math"
 
-// shannonEntropy returns the Shannon entropy (bits/char) of s, used to filter
-// low-entropy false positives (e.g. "password" or "changeme") out of generic rules.
 func shannonEntropy(s string) float64 {
 	if s == "" {
 		return 0

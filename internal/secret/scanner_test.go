@@ -101,11 +101,11 @@ func TestLooksLikePlaceholder(t *testing.T) {
 		secret string
 		want   bool
 	}{
-		{"AKIAABCDEFGHIJKLMNOP", true},          // sequential run
-		{"00000000", true},                      // repeated run
-		{"sk_live_example12345678901234", true}, // marker word
-		{"hunter2pass", true},                   // marker word
-		{"AKIAJ7QZX9K3M2NPLW4B", false},         // no marker, no run
+		{"AKIAABCDEFGHIJKLMNOP", true},
+		{"00000000", true},
+		{"sk_live_example12345678901234", true},
+		{"hunter2pass", true},
+		{"AKIAJ7QZX9K3M2NPLW4B", false},
 	}
 	for _, c := range cases {
 		if got := looksLikePlaceholder(c.secret); got != c.want {

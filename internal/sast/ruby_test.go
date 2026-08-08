@@ -81,13 +81,6 @@ func TestRubyScanNoFalsePositiveOnLiteralCommand(t *testing.T) {
 	}
 }
 
-// Regression test: hasDescendant (shared with php.go) originally hardcoded
-// phpLang for Type() regardless of which language's node it was given.
-// Called from Ruby's rubyIsDynamicString on a Ruby "string" node's
-// interpolation child, it looked up Ruby's symbol IDs in PHP's symbol
-// table — sometimes coincidentally right (the subshell/backtick case),
-// sometimes wrong (this case, a plain interpolated string). hasDescendant
-// now takes an explicit *gts.Language. Exercise the exact case that failed.
 func TestRubySQLInjectionViaStringInterpolation(t *testing.T) {
 	dir := t.TempDir()
 	src := "def run(user_input)\n  User.where(\"name = '#{user_input}'\")\nend\n"

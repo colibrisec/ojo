@@ -96,10 +96,6 @@ func TestPythonScanNoFalsePositiveOnLiteralCommand(t *testing.T) {
 	}
 }
 
-// Regression test: pyIsDynamicString's .format(...) branch reads a child
-// node's text to compare against "format" — an earlier version passed a nil
-// source buffer to Text(), which silently always returns "", so this branch
-// never actually fired. Exercise it directly against real source bytes.
 func TestPythonSQLInjectionViaDotFormat(t *testing.T) {
 	dir := t.TempDir()
 	src := "def run(db, user_input):\n    db.execute(\"SELECT * FROM t WHERE id={}\".format(user_input))\n"

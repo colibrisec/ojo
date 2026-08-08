@@ -1,13 +1,3 @@
-// PHP rules, using gotreesitter's php grammar — same pure-Go, no-cgo
-// tree-sitter runtime already used for Python/JS (see python.go's package
-// doc). The grammar was verified directly against modern PHP 8 syntax
-// (enums, readonly properties, named arguments, the nullsafe operator,
-// match expressions, attributes, union types, first-class callable syntax,
-// arrow functions, constructor property promotion) before adopting it —
-// all parsed clean.
-//
-// Curated against github.com/semgrep/semgrep-rules' php ruleset: same
-// threat coverage, hand-ported rather than executing semgrep's rule engine.
 package sast
 
 import (
@@ -60,11 +50,6 @@ func phpIssueAt(id, severity, path, title, message string, n *gts.Node) model.Is
 	}
 }
 
-// phpIsDynamicString reports whether n is built at runtime — "."
-// concatenation, or a double-quoted/heredoc string with an interpolated
-// variable — rather than a plain literal. A bare variable argument (no
-// concatenation/interpolation) is deliberately not flagged, mirroring the
-// same narrow definition used for Go/Python/JS.
 func phpIsDynamicString(n *gts.Node) bool {
 	switch n.Type(phpLang) {
 	case "binary_expression":
@@ -161,8 +146,10 @@ func checkPHPSQLInjection(root *gts.Node, src []byte, path string) []model.Issue
 	return issues
 }
 
-var phpHashFuncQuery = mustPHPQuery(`(function_call_expression function: (name) @fname) @call`)
-var phpHashWithAlgQuery = mustPHPQuery(`(function_call_expression function: (name) @fname arguments: (arguments . (argument (string) @alg)) (#eq? @fname "hash")) @call`)
+var (
+	phpHashFuncQuery    = mustPHPQuery(`(function_call_expression function: (name) @fname) @call`)
+	phpHashWithAlgQuery = mustPHPQuery(`(function_call_expression function: (name) @fname arguments: (arguments . (argument (string) @alg)) (#eq? @fname "hash")) @call`)
+)
 
 func checkPHPWeakHash(root *gts.Node, src []byte, path string) []model.Issue {
 	var issues []model.Issue
@@ -201,8 +188,10 @@ func checkPHPUnserialize(root *gts.Node, src []byte, path string) []model.Issue 
 	return issues
 }
 
-var phpRandFuncQuery = mustPHPQuery(`(function_call_expression function: (name) @fname (#any-of? @fname "rand" "mt_rand")) @call`)
-var phpFuncDefQuery = mustPHPQuery(`(function_definition name: (name) @fname body: (compound_statement) @body) @def`)
+var (
+	phpRandFuncQuery = mustPHPQuery(`(function_call_expression function: (name) @fname (#any-of? @fname "rand" "mt_rand")) @call`)
+	phpFuncDefQuery  = mustPHPQuery(`(function_definition name: (name) @fname body: (compound_statement) @body) @def`)
+)
 
 func checkPHPInsecureRandom(root *gts.Node, src []byte, path string) []model.Issue {
 	var issues []model.Issue
@@ -223,8 +212,10 @@ func checkPHPInsecureRandom(root *gts.Node, src []byte, path string) []model.Iss
 	return issues
 }
 
-var phpVerifyPeerFalseQuery = mustPHPQuery(`(array_element_initializer (string) @key (boolean) @val (#any-of? @key "'verify_peer'" "'verify_peer_name'" "\"verify_peer\"" "\"verify_peer_name\"")) @pair`)
-var phpCurlSSLVerifyQuery = mustPHPQuery(`(function_call_expression function: (name) @fn arguments: (arguments (argument (variable_name)) (argument (name) @opt) (argument (boolean) @val)) (#eq? @fn "curl_setopt") (#any-of? @opt "CURLOPT_SSL_VERIFYPEER" "CURLOPT_SSL_VERIFYHOST")) @call`)
+var (
+	phpVerifyPeerFalseQuery = mustPHPQuery(`(array_element_initializer (string) @key (boolean) @val (#any-of? @key "'verify_peer'" "'verify_peer_name'" "\"verify_peer\"" "\"verify_peer_name\"")) @pair`)
+	phpCurlSSLVerifyQuery   = mustPHPQuery(`(function_call_expression function: (name) @fn arguments: (arguments (argument (variable_name)) (argument (name) @opt) (argument (boolean) @val)) (#eq? @fn "curl_setopt") (#any-of? @opt "CURLOPT_SSL_VERIFYPEER" "CURLOPT_SSL_VERIFYHOST")) @call`)
+)
 
 func checkPHPTLSVerifyDisabled(root *gts.Node, src []byte, path string) []model.Issue {
 	var issues []model.Issue
@@ -292,9 +283,6 @@ func checkPHPPregReplaceEvalModifier(root *gts.Node, src []byte, path string) []
 		if delim != '/' && delim != '#' && delim != '~' {
 			continue
 		}
-		// modifiers follow the closing delimiter; check the closing delimiter
-		// appears somewhere before the trailing "e" (i.e. "e" is a modifier,
-		// not part of the pattern body).
 		if strings.LastIndexByte(pat[:len(pat)-1], delim) < 0 {
 			continue
 		}

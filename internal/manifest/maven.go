@@ -17,10 +17,6 @@ type pomProject struct {
 	Dependencies []pomDependency `xml:"dependencies>dependency"`
 }
 
-// pomProperties captures <properties> as a map: Maven properties are
-// arbitrary tag names (<spring.version>5.3.20</spring.version>), which
-// encoding/xml can't decode straight into a map -- the ",any" catch-all plus
-// XMLName is the standard idiom for that.
 type pomProperties struct {
 	Items []pomProperty `xml:",any"`
 }
@@ -36,17 +32,6 @@ type pomDependency struct {
 	Version    string `xml:"version"`
 }
 
-// Parse extracts <dependency> coordinates from pom.xml.
-//
-// ponytail ceiling: pom.xml is not a lockfile. Versions are frequently
-// property placeholders resolved via parent POM inheritance or a
-// <dependencyManagement> section in a different file -- correctly resolving
-// those means fetching and merging parent POMs, real Maven dependency
-// resolution. Out of scope. This only resolves ${property} references
-// against this same file's own <properties> block (catches a large
-// fraction of real-world single-file cases) and silently skips anything
-// still unresolved, the same "don't guess" precedent as pip.go skipping
-// unpinned requirements.txt lines.
 func (mavenPomParser) Parse(path string) ([]model.Package, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

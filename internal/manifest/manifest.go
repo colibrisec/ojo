@@ -8,9 +8,7 @@ import (
 	"github.com/colibrisec/ojo/internal/walk"
 )
 
-// Parser extracts packages from one manifest/lockfile format.
 type Parser interface {
-	// Match reports whether the given filename (base name) belongs to this parser.
 	Match(name string) bool
 	Parse(path string) ([]model.Package, error)
 }
@@ -31,10 +29,6 @@ var parsers = []Parser{
 	swiftPackageResolvedParser{},
 }
 
-// Discover walks root and parses every recognized manifest file it finds.
-// Packages that resolve to the same name+version+ecosystem across multiple
-// manifests (e.g. a repo with both requirements.txt and poetry.lock) are
-// deduped, keeping the first one found, so they're not double-reported.
 func Discover(root string) ([]model.Package, error) {
 	var pkgs []model.Package
 	seen := map[model.Package]bool{}

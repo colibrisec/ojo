@@ -6,13 +6,6 @@ import (
 	"testing"
 )
 
-// TestReadImageFSFollowsSymlinkedOSRelease is a regression test: on Debian
-// slim images, /etc/os-release is a symlink to /usr/lib/os-release. A tar
-// symlink entry has zero content (the target is in Linkname, not the entry
-// body), so reading only "etc/os-release" silently produced an empty
-// os-release, an empty OSV ecosystem string, and OSV then matched package
-// names loosely across ecosystems (Debian's "tar" package matched npm's
-// "node-tar" advisories). readImageFS must fall back to usr/lib/os-release.
 func TestReadImageFSFollowsSymlinkedOSRelease(t *testing.T) {
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
@@ -54,8 +47,6 @@ func writeTarFile(t *testing.T, tw *tar.Writer, name string, content []byte) {
 }
 
 func TestScanRefusesUnknownEcosystem(t *testing.T) {
-	// osEcosystem on an empty/unrecognized info map must yield "" so Scan's
-	// guard rejects the query rather than sending OSV an unscoped one.
 	if eco := osEcosystem(map[string]string{}); eco != "" {
 		t.Fatalf("expected empty ecosystem for unknown OS, got %q", eco)
 	}

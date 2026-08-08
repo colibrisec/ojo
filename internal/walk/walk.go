@@ -1,4 +1,3 @@
-// Package walk provides the directory traversal shared by every filesystem-based scanner.
 package walk
 
 import (

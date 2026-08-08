@@ -72,13 +72,11 @@ func TestResolveFixedVersion(t *testing.T) {
 		},
 	}
 
-	// Installed 3.2.0 should resolve to the 3.2.13 fix, not the unrelated 2.2.28 one.
 	got := resolveFixedVersion(d, model.Package{Name: "django", Version: "3.2.0", Ecosystem: "PyPI"})
 	if got != "3.2.13" {
 		t.Errorf("resolveFixedVersion for 3.2.0 = %q, want 3.2.13", got)
 	}
 
-	// No affected entry for a different package/ecosystem.
 	got = resolveFixedVersion(d, model.Package{Name: "requests", Version: "2.6.0", Ecosystem: "PyPI"})
 	if got != "" {
 		t.Errorf("resolveFixedVersion for unrelated package = %q, want empty", got)

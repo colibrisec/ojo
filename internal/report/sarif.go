@@ -8,10 +8,6 @@ import (
 	"sort"
 )
 
-// SARIF 2.1.0 (https://docs.oasis-open.org/sarif/sarif/v2.1.0/) -- just the
-// subset needed to represent ojo's findings/issues. Hand-written rather
-// than pulled from a library: the schema is small and mechanical for this
-// use case, and a SARIF library would be overkill.
 type sarifLog struct {
 	Schema  string     `json:"$schema"`
 	Version string     `json:"version"`
@@ -45,7 +41,7 @@ type sarifMessage struct {
 
 type sarifResult struct {
 	RuleID    string          `json:"ruleId"`
-	Level     string          `json:"level"` // error | warning | note
+	Level     string          `json:"level"`
 	Message   sarifMessage    `json:"message"`
 	Locations []sarifLocation `json:"locations"`
 }
@@ -67,9 +63,6 @@ type sarifRegion struct {
 	StartLine int `json:"startLine"`
 }
 
-// SARIF renders the report as a SARIF 2.1.0 log, for tools like GitHub code
-// scanning (`github/codeql-action/upload-sarif`). root, if non-empty,
-// shortens file paths for display, same as Table/IssueTable.
 func (r Report) SARIF(w io.Writer, root string) error {
 	rules := map[string]sarifRule{}
 	results := []sarifResult{}
@@ -84,8 +77,6 @@ func (r Report) SARIF(w io.Writer, root string) error {
 				Level:   sarifLevel(v.Severity),
 				Message: sarifMessage{Text: fmt.Sprintf("%s@%s: %s", f.Package.Name, f.Package.Version, v.Summary)},
 				Locations: []sarifLocation{{PhysicalLocation: sarifPhysicalLocation{
-					// No line number at the package level -- SARIF allows a
-					// location with just an artifact URI and no region.
 					ArtifactLocation: sarifArtifactLocation{URI: sarifPath(root, f.Package.Source)},
 				}}},
 			})
@@ -135,8 +126,6 @@ func (r Report) SARIF(w io.Writer, root string) error {
 	return enc.Encode(log)
 }
 
-// sarifLevel maps ojo's severity vocabulary to SARIF's three result levels.
-// UNKNOWN maps to "warning" rather than being silently dropped or hidden.
 func sarifLevel(severity string) string {
 	switch severity {
 	case "CRITICAL", "HIGH":
@@ -150,8 +139,6 @@ func sarifLevel(severity string) string {
 	}
 }
 
-// sarifPath relativizes path and normalizes it to forward slashes -- SARIF
-// artifact URIs are conventionally POSIX-style even on Windows.
 func sarifPath(root, path string) string {
 	return filepath.ToSlash(relPath(root, path))
 }

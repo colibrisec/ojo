@@ -9,7 +9,6 @@ import (
 	"github.com/colibrisec/ojo/internal/model"
 )
 
-// importedAs returns the local identifier a package is imported under (handles aliases).
 func importedAs(f *ast.File, path string) (string, bool) {
 	for _, imp := range f.Imports {
 		p, _ := strconv.Unquote(imp.Path.Value)
@@ -25,8 +24,6 @@ func importedAs(f *ast.File, path string) (string, bool) {
 	return "", false
 }
 
-// isDynamicString reports whether e is built at runtime (Sprintf/concatenation)
-// rather than a plain string literal.
 func isDynamicString(e ast.Expr) bool {
 	switch v := e.(type) {
 	case *ast.BasicLit:
@@ -58,7 +55,6 @@ func nameLooksSecret(name string) bool {
 	return false
 }
 
-// checkHardcodedSecret flags `var password = "literal"` / `password := "literal"` assignments.
 func checkHardcodedSecret(f *ast.File, fset *token.FileSet, path string) []model.Issue {
 	var issues []model.Issue
 	ast.Inspect(f, func(n ast.Node) bool {
@@ -108,8 +104,6 @@ func litLen(lit *ast.BasicLit) int {
 	return len(s)
 }
 
-// checkCommandInjection flags os/exec.Command(Context) calls whose command/arg
-// is built dynamically rather than passed as a literal.
 func checkCommandInjection(f *ast.File, fset *token.FileSet, path string) []model.Issue {
 	pkg, ok := importedAs(f, "os/exec")
 	if !ok {
@@ -147,8 +141,6 @@ func checkCommandInjection(f *ast.File, fset *token.FileSet, path string) []mode
 	return issues
 }
 
-// checkSQLInjection flags database/sql Query/Exec/QueryRow calls built via
-// Sprintf/concatenation instead of a literal query with placeholders.
 func checkSQLInjection(f *ast.File, fset *token.FileSet, path string) []model.Issue {
 	var issues []model.Issue
 	sqlMethods := map[string]bool{"Query": true, "QueryContext": true, "QueryRow": true, "QueryRowContext": true, "Exec": true, "ExecContext": true}
@@ -220,8 +212,6 @@ func checkWeakDES(f *ast.File, fset *token.FileSet, path string) []model.Issue {
 	return issues
 }
 
-// checkInsecureRandom flags math/rand usage inside functions whose name
-// suggests it's generating a token/session/key/secret (heuristic, low confidence).
 func checkInsecureRandom(f *ast.File, fset *token.FileSet, path string) []model.Issue {
 	pkg, ok := importedAs(f, "math/rand")
 	if !ok {
@@ -251,8 +241,6 @@ func checkInsecureRandom(f *ast.File, fset *token.FileSet, path string) []model.
 
 var authCallNames = map[string]bool{"Verify": true, "Authenticate": true, "CompareHashAndPassword": true}
 
-// checkDiscardedAuthError flags auth-relevant calls used as a bare statement
-// (its error return is silently discarded).
 func checkDiscardedAuthError(f *ast.File, fset *token.FileSet, path string) []model.Issue {
 	var issues []model.Issue
 	ast.Inspect(f, func(n ast.Node) bool {
@@ -276,7 +264,6 @@ func checkDiscardedAuthError(f *ast.File, fset *token.FileSet, path string) []mo
 	return issues
 }
 
-// checkTLSInsecureSkipVerify flags tls.Config{InsecureSkipVerify: true}.
 func checkTLSInsecureSkipVerify(f *ast.File, fset *token.FileSet, path string) []model.Issue {
 	var issues []model.Issue
 	ast.Inspect(f, func(n ast.Node) bool {
@@ -311,10 +298,11 @@ func checkTLSInsecureSkipVerify(f *ast.File, fset *token.FileSet, path string) [
 	return issues
 }
 
-var permissiveFileModes = map[string]bool{"0777": true, "0666": true, "0o777": true, "0o666": true}
-var fileModeFuncs = map[string]bool{"OpenFile": true, "MkdirAll": true, "Mkdir": true, "Chmod": true}
+var (
+	permissiveFileModes = map[string]bool{"0777": true, "0666": true, "0o777": true, "0o666": true}
+	fileModeFuncs       = map[string]bool{"OpenFile": true, "MkdirAll": true, "Mkdir": true, "Chmod": true}
+)
 
-// checkPermissiveFileMode flags world-writable file mode literals passed to os functions.
 func checkPermissiveFileMode(f *ast.File, fset *token.FileSet, path string) []model.Issue {
 	pkg, ok := importedAs(f, "os")
 	if !ok {

@@ -1,4 +1,3 @@
-// Package report renders scan findings as a table, JSON, or CycloneDX SBOM.
 package report
 
 import (
@@ -15,12 +14,6 @@ import (
 
 const titleWrapWidth = 60
 
-// Table prints a human-readable, box-drawn vulnerability table grouped by
-// package (alphabetical) and sorted by severity within each package,
-// matching Trivy's layout. root, if non-empty, is unused here (kept for
-// signature symmetry with IssueTable) since Package.Source for vuln
-// findings is rarely a meaningful filesystem path (e.g. "apk"/"dpkg" for
-// image scans).
 func Table(w io.Writer, root string, findings []model.Finding) {
 	_ = root
 	if len(findings) == 0 {
@@ -53,8 +46,6 @@ func Table(w io.Writer, root string, findings []model.Finding) {
 		}
 		rows[i] = []string{r.pkg.Name, r.vuln.ID, r.vuln.Severity, "affected", r.pkg.Version, r.vuln.FixedVersion, title}
 	}
-	// Blank out cells that repeat the row above so identical runs read as one
-	// merged span (Library=0, Severity=2, Status=3, Installed Version=4).
 	mergeRuns(rows, []int{0, 2, 3, 4})
 
 	cols := []boxColumn{
@@ -76,9 +67,6 @@ func JSON(w io.Writer, findings []model.Finding) error {
 	return enc.Encode(findings)
 }
 
-// IssueTable prints a human-readable, box-drawn table of non-SCA scanner
-// issues (secret/misconfig/sast), sorted by severity. root, if non-empty,
-// shortens file paths for display.
 func IssueTable(w io.Writer, root string, issues []model.Issue) {
 	if len(issues) == 0 {
 		return
@@ -110,22 +98,18 @@ func IssueTable(w io.Writer, root string, issues []model.Issue) {
 	writeBoxTable(w, cols, rows, 0, isColorWriter(w))
 }
 
-// Report is the combined output of every scanner requested in one invocation.
 type Report struct {
 	Target   string          `json:"target,omitempty"`
 	Findings []model.Finding `json:"findings,omitempty"`
 	Issues   []model.Issue   `json:"issues,omitempty"`
 }
 
-// JSON prints the combined report as indented JSON.
 func (r Report) JSON(w io.Writer) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(r)
 }
 
-// Table prints the target header, a Trivy-style "Total: N (...)" summary
-// line, the vuln table, and the issue table.
 func (r Report) Table(w io.Writer, root string) {
 	if len(r.Findings) == 0 && len(r.Issues) == 0 {
 		if r.Target != "" {
@@ -157,8 +141,6 @@ func printTargetHeader(w io.Writer, target string) {
 	fmt.Fprintln(w, strings.Repeat("=", len([]rune(target))))
 }
 
-// printTotalLine matches Trivy's "Total: N (UNKNOWN: x, LOW: y, MEDIUM: z,
-// HIGH: w, CRITICAL: v)" wording and ascending severity order.
 func printTotalLine(w io.Writer, findings []model.Finding, issues []model.Issue) {
 	counts := map[string]int{}
 	total := 0
@@ -187,7 +169,6 @@ func printTotalLine(w io.Writer, findings []model.Finding, issues []model.Issue)
 	fmt.Fprintf(w, "Total: %d (%s)\n", total, strings.Join(parts, ", "))
 }
 
-// SBOM renders the package inventory as a CycloneDX 1.5 JSON document.
 func SBOM(w io.Writer, pkgs []model.Package) error {
 	bom := cdx.NewBOM()
 	components := make([]cdx.Component, 0, len(pkgs))
