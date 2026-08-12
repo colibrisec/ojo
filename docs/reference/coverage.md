@@ -34,8 +34,9 @@ What ojo can actually scan today.
 |---|---|
 | Dockerfile | ✅ |
 | Kubernetes YAML | ✅ (raw manifests only — no Helm/Kustomize rendering) |
-| Terraform | ✅ (literal values only — no variable/module resolution) |
-| CloudFormation, Azure ARM, Ansible, Helm charts | ❌ |
+| Terraform (AWS/Azure/GCP providers) | ✅ (`local`/`var` defaults resolved within one directory — no module graph traversal) |
+| CloudFormation (YAML or JSON) | ✅ (literal values only — unresolved intrinsic functions like `!Ref`/`!Sub` are skipped, not guessed at) |
+| Azure ARM (native JSON templates), Ansible, Helm charts | ❌ |
 
 ## SAST languages
 
