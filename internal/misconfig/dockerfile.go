@@ -69,13 +69,25 @@ func dockerfileChecks(instrs []Instruction, path string) []model.Issue {
 	hasHealthcheck := false
 	for _, in := range instrs {
 		switch in.Cmd {
+		case "FROM":
+			lastFrom = in.Args
+			// New stage: USER/HEALTHCHECK reset to Docker defaults for that stage.
+			lastUser = ""
+			hasHealthcheck = false
+			if !strings.Contains(lastFrom, "@sha256:") && (!strings.Contains(lastFrom, ":") || strings.HasSuffix(lastFrom, ":latest")) {
+				issues = append(issues, newIssue("dockerfile-latest-tag", "HIGH", path, in.Line,
+					"FROM image has no pinned tag (or uses :latest): "+lastFrom,
+					"Image "+lastFrom+" is not pinned to a specific, immutable tag or digest"))
+			}
 		case "USER":
 			lastUser = in.Args
 		case "HEALTHCHECK":
-			hasHealthcheck = true
-		case "FROM":
-			lastFrom = in.Args
-			if !strings.Contains(lastFrom, "@sha256:") && (!strings.Contains(lastFrom, ":") || strings.HasSuffix(lastFrom, ":latest")) {
+			if strings.EqualFold(strings.TrimSpace(in.Args), "NONE") {
+				hasHealthcheck = false
+			} else {
+				hasHealthcheck = true
+			}
+		case "ENV", "ARG":
 				issues = append(issues, newIssue("dockerfile-latest-tag", "HIGH", path, in.Line,
 					"FROM image has no pinned tag (or uses :latest): "+lastFrom,
 					"Image "+lastFrom+" is not pinned to a specific, immutable tag or digest"))
