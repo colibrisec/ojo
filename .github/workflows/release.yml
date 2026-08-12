@@ -310,6 +310,13 @@ jobs:
     needs: [version, package-windows, release]
     runs-on: ubuntu-latest
     steps:
+      # The colibrisec/winget-pkgs fork doesn't stay in sync with upstream on
+      # its own -- without this, komac tries to branch from a commit its
+      # fork doesn't have yet and fails with "Ref cannot be created".
+      - name: Sync winget-pkgs fork with upstream
+        env:
+          GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: gh api -X POST repos/colibrisec/winget-pkgs/merge-upstream -f branch=master
       - uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e # v2
         with:
           identifier: colibrisec.ojo
