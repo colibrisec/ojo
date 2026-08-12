@@ -58,7 +58,7 @@ Each release also publishes native packages, built from the same binaries above:
 
     The Snap Store had already taken the `ojo` name, so the published snap — and the command it installs — is `ojo-scanner`, not `ojo`.
 
-    This snap runs under [strict confinement](https://snapcraft.io/docs/classic-confinement), so by default it can only read/write inside your `$HOME` and reach the network (for OSV.dev/registry lookups). To scan a path outside `$HOME` — a mounted drive, `/opt`, etc. — connect the extra interface first:
+    This snap runs under [strict confinement](https://snapcraft.io/docs/strict-confinement), so by default it can only read/write inside your `$HOME` and reach the network (for OSV.dev/registry lookups). To scan a path outside `$HOME` — a mounted drive, `/opt`, etc. — connect the extra interface first:
 
     ```console
     $ sudo snap connect ojo-scanner:removable-media
