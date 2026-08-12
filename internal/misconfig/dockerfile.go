@@ -66,16 +66,26 @@ func dockerfileChecks(instrs []Instruction, path string) []model.Issue {
 
 	lastUser := ""
 	lastFrom := ""
+	hasHealthcheck := false
 	for _, in := range instrs {
 		switch in.Cmd {
-		case "USER":
-			lastUser = in.Args
 		case "FROM":
 			lastFrom = in.Args
+			// New stage: USER/HEALTHCHECK reset to Docker defaults for that stage.
+			lastUser = ""
+			hasHealthcheck = false
 			if !strings.Contains(lastFrom, "@sha256:") && (!strings.Contains(lastFrom, ":") || strings.HasSuffix(lastFrom, ":latest")) {
 				issues = append(issues, newIssue("dockerfile-latest-tag", "HIGH", path, in.Line,
 					"FROM image has no pinned tag (or uses :latest): "+lastFrom,
 					"Image "+lastFrom+" is not pinned to a specific, immutable tag or digest"))
+			}
+		case "USER":
+			lastUser = in.Args
+		case "HEALTHCHECK":
+			if strings.EqualFold(strings.TrimSpace(in.Args), "NONE") {
+				hasHealthcheck = false
+			} else {
+				hasHealthcheck = true
 			}
 		case "ENV", "ARG":
 			nameUpper := strings.ToUpper(in.Args)
@@ -99,6 +109,10 @@ func dockerfileChecks(instrs []Instruction, path string) []model.Issue {
 		issues = append(issues, newIssue("dockerfile-root-user", "HIGH", path, 1,
 			"Container runs as root (no non-root USER instruction)",
 			"final effective user: "+orDefault(lastUser, "root (default)")))
+	}
+	if !hasHealthcheck {
+		issues = append(issues, newIssue("dockerfile-no-healthcheck", "LOW", path, 1,
+			"No HEALTHCHECK instruction defined", "image has no HEALTHCHECK"))
 	}
 	return issues
 }
