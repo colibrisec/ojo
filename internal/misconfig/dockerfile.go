@@ -66,10 +66,13 @@ func dockerfileChecks(instrs []Instruction, path string) []model.Issue {
 
 	lastUser := ""
 	lastFrom := ""
+	hasHealthcheck := false
 	for _, in := range instrs {
 		switch in.Cmd {
 		case "USER":
 			lastUser = in.Args
+		case "HEALTHCHECK":
+			hasHealthcheck = true
 		case "FROM":
 			lastFrom = in.Args
 			if !strings.Contains(lastFrom, "@sha256:") && (!strings.Contains(lastFrom, ":") || strings.HasSuffix(lastFrom, ":latest")) {
@@ -99,6 +102,10 @@ func dockerfileChecks(instrs []Instruction, path string) []model.Issue {
 		issues = append(issues, newIssue("dockerfile-root-user", "HIGH", path, 1,
 			"Container runs as root (no non-root USER instruction)",
 			"final effective user: "+orDefault(lastUser, "root (default)")))
+	}
+	if !hasHealthcheck {
+		issues = append(issues, newIssue("dockerfile-no-healthcheck", "LOW", path, 1,
+			"No HEALTHCHECK instruction defined", "image has no HEALTHCHECK"))
 	}
 	return issues
 }
