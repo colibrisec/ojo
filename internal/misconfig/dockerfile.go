@@ -88,11 +88,6 @@ func dockerfileChecks(instrs []Instruction, path string) []model.Issue {
 				hasHealthcheck = true
 			}
 		case "ENV", "ARG":
-				issues = append(issues, newIssue("dockerfile-latest-tag", "HIGH", path, in.Line,
-					"FROM image has no pinned tag (or uses :latest): "+lastFrom,
-					"Image "+lastFrom+" is not pinned to a specific, immutable tag or digest"))
-			}
-		case "ENV", "ARG":
 			nameUpper := strings.ToUpper(in.Args)
 			for _, kw := range []string{"PASSWORD", "SECRET", "API_KEY", "APIKEY", "TOKEN"} {
 				if strings.Contains(nameUpper, kw) {

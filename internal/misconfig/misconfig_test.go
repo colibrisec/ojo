@@ -535,6 +535,31 @@ Resources:
 	}
 }
 
+func TestDockerfileHealthcheckPerStage(t *testing.T) {
+	// Multi-stage build: HEALTHCHECK in an earlier stage must not suppress
+	// dockerfile-no-healthcheck for the final stage, and HEALTHCHECK NONE
+	// explicitly disables it rather than counting as "has one".
+	instrs := parseDockerfile([]byte(
+		"FROM builder AS build\n" +
+			"HEALTHCHECK CMD curl -f http://localhost/ || exit 1\n" +
+			"USER appuser\n" +
+			"FROM scratch\n" +
+			"COPY --from=build /app /app\n" +
+			"HEALTHCHECK NONE\n",
+	))
+	issues := dockerfileChecks(instrs, "Dockerfile")
+
+	foundNoHealthcheck := false
+	for _, i := range issues {
+		if i.RuleID == "dockerfile-no-healthcheck" {
+			foundNoHealthcheck = true
+		}
+	}
+	if !foundNoHealthcheck {
+		t.Errorf("expected dockerfile-no-healthcheck to fire (final stage has HEALTHCHECK NONE, earlier stage's HEALTHCHECK shouldn't count), got: %+v", issues)
+	}
+}
+
 func write(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
