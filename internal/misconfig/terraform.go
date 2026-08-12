@@ -456,12 +456,19 @@ func listAttrContainsOpenCIDR(body *hclsyntax.Body, ctx *hcl.EvalContext, attrNa
 // --- Storage / database ---
 
 func checkStorageEncryption(resType, resName, path string, line int, body *hclsyntax.Body, ctx *hcl.EvalContext) []model.Issue {
-	if resType != "aws_db_instance" && resType != "aws_ebs_volume" {
+	switch resType {
+	case "aws_db_instance":
+		if enc, ok := attrBool(body, "storage_encrypted", ctx); !ok || !enc {
+			return []model.Issue{newIssue("tf-unencrypted-storage", "HIGH", path, line,
+				"Storage is not encrypted", resType+"."+resName+" storage_encrypted is not true")}
+		}
+	case "aws_ebs_volume":
+		if enc, ok := attrBool(body, "encrypted", ctx); !ok || !enc {
+			return []model.Issue{newIssue("tf-unencrypted-storage", "HIGH", path, line,
+				"Storage is not encrypted", resType+"."+resName+" encrypted is not true")}
+		}
+	default:
 		return nil
-	}
-	if b, ok := attrBool(body, "storage_encrypted", ctx); ok && !b {
-		return []model.Issue{newIssue("tf-unencrypted-storage", "HIGH", path, line,
-			"Storage is explicitly unencrypted", resType+"."+resName+" storage_encrypted = false")}
 	}
 	return nil
 }
