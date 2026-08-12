@@ -315,4 +315,5 @@ jobs:
           identifier: colibrisec.ojo
           installers-regex: '\.msi$'
           version: ${{ needs.version.outputs.version }}
+          release-tag: ${{ needs.version.outputs.version }}
           token: ${{ secrets.WINGET_TOKEN }}
