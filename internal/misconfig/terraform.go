@@ -642,10 +642,15 @@ func checkIMDSv2(resType, resName, path string, line int, body *hclsyntax.Body, 
 			"Instance metadata service allows IMDSv1 (no metadata_options block)",
 			resType+"."+resName+" has no metadata_options block; http_tokens defaults to \"optional\"")}
 	}
-	if tokens, ok := attrString(mo.Body, "http_tokens", ctx); !ok || tokens != "required" {
+	tokens, ok := attrString(mo.Body, "http_tokens", ctx)
+	shown := tokens
+	if !ok {
+		shown = "<absent>"
+	}
+	if !ok || tokens != "required" {
 		return []model.Issue{newIssue("tf-imdsv1-enabled", "HIGH", path, line,
 			"Instance metadata service allows IMDSv1 (http_tokens != \"required\")",
-			resType+"."+resName+" metadata_options.http_tokens = \""+tokens+"\"")}
+			resType+"."+resName+" metadata_options.http_tokens = \""+shown+"\"")}
 	}
 	return nil
 }
