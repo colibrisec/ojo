@@ -1,0 +1,23 @@
+changelog:
+  categories:
+    - title: New Features
+      labels:
+        - enhancement
+    - title: Bug Fixes
+      labels:
+        - bug
+    - title: Security
+      labels:
+        - vulnerability
+    - title: Documentation
+      labels:
+        - documentation
+    - title: Other Changes
+      labels:
+        - "*"
+  exclude:
+    labels:
+      - duplicate
+      - invalid
+      - question
+      - wontfix
