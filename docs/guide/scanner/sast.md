@@ -4,6 +4,27 @@ Static analysis over Go, Python, JavaScript/TypeScript, PHP, Ruby, and Java sour
 
 Off by default — enable with `--scanners sast`.
 
+## Custom rules
+
+Write your own rules without touching ojo's source, in YAML, one rule per `.yaml`/`.yml` file:
+
+```yaml
+id: py-custom-mktemp          # unique across every rule file
+language: python               # python, javascript, typescript, tsx, php, ruby, java — no go, see below
+severity: MEDIUM                # CRITICAL, HIGH, MEDIUM, LOW, or INFO
+title: insecure temp path        # optional
+message: tempfile.mktemp() is insecure; use NamedTemporaryFile() instead
+query: |
+  (call function: (attribute object: (identifier) @mod attribute: (identifier) @fn)
+    (#eq? @mod "tempfile") (#eq? @fn "mktemp")) @match
+```
+
+`query` is a **raw [tree-sitter query](https://tree-sitter.github.io/tree-sitter/using-parsers/queries/index.html)** — the exact same query language every built-in rule in this file is written in (see `internal/sast/*.go` for hundreds of real examples to copy from), not a friendlier Semgrep-style `pattern: eval($X)` syntax. That's a deliberate scope decision, not an oversight — it reuses the query engine directly instead of building a separate pattern-string-to-query compiler, at the cost of a more expert-facing authoring experience. The one required convention beyond valid tree-sitter query syntax: **the capture used for a finding's file/line location must be named `@match`** — a query with no `@match` capture at all is a load-time error; a query that never matches simply produces no findings.
+
+By default ojo looks for rules in `<path>/.ojo/rules/` (the same `.ojo/` convention as `.ojo.yaml`) — nothing there means no custom rules, not an error. Point elsewhere with `--rules-dir`; an explicit `--rules-dir` that doesn't exist *is* an error (almost certainly a typo). Custom rules run whenever `sast` is in `--scanners` (including via `-g/--gitlab`, which always runs `sast`) and their findings are indistinguishable from built-in ones in every output format (table/json/sarif/GitLab) except by rule ID.
+
+Go has no custom rules: its built-in rules are hand-rolled `go/ast` predicates with no query layer to hang a YAML-driven rule off of — this is Python/JS/TS/PHP/Ruby/Java only.
+
 ## Language scope: Go, Python, JS/TS, PHP, Ruby, Java — no cgo
 
 Real multi-language static analysis normally means a proper parser per language (tree-sitter, typically), and the standard Go bindings for that are **cgo-based** — they need a C toolchain at build time, which breaks `GOOS=x GOARCH=y go build` cross-compilation working out of the box. Go source gets the stdlib parser for free, no tradeoff needed.
@@ -22,28 +43,37 @@ Rules are compiled tree-sitter queries (`internal/sast/python.go`, `internal/sas
 
 Other languages are still out of scope — revisit per-language the same way Python, JS/TS, PHP, Ruby, and Java were: check what a candidate parser actually handles before committing.
 
-## Built-in rules — Go (9)
+## Built-in rules — Go (18)
 
 | Rule | Severity | Detects |
 |---|---|---|
 | `go-hardcoded-secret` | MEDIUM | A literal string assigned to a variable named `password`/`secret`/`apikey`/`token` |
-| `go-command-injection` | HIGH | `os/exec.Command`/`CommandContext` with an argument built via `fmt.Sprintf`/string concatenation instead of a literal |
-| `go-sql-injection` | HIGH | `database/sql` `Query`/`Exec`/`QueryRow` (and `...Context` variants) with a query string built via `fmt.Sprintf`/concatenation instead of a literal/placeholders |
+| `go-command-injection` | HIGH | `os/exec.Command`/`CommandContext` with an argument built via `fmt.Sprintf`/string concatenation, or (intraprocedural taint tracking) a local variable derived from request/env input, instead of a literal |
+| `go-sql-injection` | HIGH | `database/sql` `Query`/`Exec`/`QueryRow` (and `...Context` variants) with a query string built via `fmt.Sprintf`/concatenation, or (intraprocedural taint tracking) a local variable derived from request/env input, instead of a literal/placeholders |
 | `go-weak-hash` | LOW | `crypto/md5` or `crypto/sha1` usage |
 | `go-weak-cipher-des` | MEDIUM | `crypto/des` usage |
 | `go-insecure-random-for-secrets` | INFO | `math/rand` used inside a function whose name suggests it generates a token/session/key/secret |
 | `go-discarded-auth-error` | HIGH | An auth-relevant call (`.Verify(`, `.Authenticate(`, `bcrypt.CompareHashAndPassword`) used as a bare statement, discarding its error return |
 | `go-tls-insecure-skip-verify` | HIGH | `tls.Config{InsecureSkipVerify: true}` |
 | `go-permissive-file-mode` | MEDIUM | `os.OpenFile`/`os.MkdirAll`/`os.Chmod` called with mode `0777`/`0666` |
+| `go-open-redirect` | MEDIUM | `http.Redirect(...)` with a target built from `r`/`req`/`request` (directly, or through a local variable — intraprocedural taint tracking) or via `fmt.Sprintf`/concatenation |
+| `go-jwt-none-algorithm` | HIGH | `jwt.SigningMethodNone` used at all |
+| `go-cors-wildcard` | MEDIUM | `Header().Set("Access-Control-Allow-Origin", "*")` |
+| `go-insecure-cookie` | MEDIUM | `http.Cookie{Secure: false}` or `{HttpOnly: false}`; or `{SameSite: http.SameSiteNoneMode}` set without `Secure: true` in the same literal |
+| `go-path-traversal` | HIGH | `os.Open`/`os.ReadFile`/`os.Create` with a path built from `r`/`req`/`request` (directly, or through a local variable — intraprocedural taint tracking) or via `fmt.Sprintf`/concatenation |
+| `go-cookie-missing-flags` | LOW | `http.Cookie{...}` that never sets `Secure` or `HttpOnly` at all |
+| `go-ssti` | HIGH | `text/template`/`html/template`'s `New(...).Parse(...)` chain with a template-source argument built via `fmt.Sprintf`/concatenation, or (intraprocedural taint tracking) a local variable derived from request/env input |
+| `go-predictable-prng-seed` | MEDIUM | `math/rand`'s `Seed(...)`/`NewSource(...)` called with a compile-time integer literal |
+| `go-ssrf` | HIGH | `net/http`'s `Get`/`Post`/`Head`/`PostForm`/`NewRequest`/`NewRequestWithContext` with a URL built via `fmt.Sprintf`/concatenation, or (intraprocedural taint tracking) a local variable derived from request/env input, instead of a validated/allowlisted URL |
 
-## Built-in rules — Python (11)
+## Built-in rules — Python (24)
 
 | Rule | Severity | Detects |
 |---|---|---|
 | `py-hardcoded-secret` | MEDIUM | A literal string assigned to a variable named `password`/`secret`/`apikey`/`token` |
 | `py-eval-exec` | HIGH | `eval(...)` or `exec(...)` called at all |
-| `py-command-injection` | HIGH | `os.system(...)`, or `subprocess.{run,call,Popen,check_call,check_output}(..., shell=True)` |
-| `py-sql-injection` | HIGH | `.execute(`/`.executemany(` with a query built via f-string interpolation, `%`-formatting, concatenation, or `.format(...)` instead of parameter placeholders |
+| `py-command-injection` | HIGH | `os.system(...)`/`os.popen(...)`, or `subprocess.{run,call,Popen,check_call,check_output}(..., shell=True)` |
+| `py-sql-injection` | HIGH | `.execute(`/`.executemany(` with a query built via f-string interpolation, `%`-formatting, concatenation, or `.format(...)`, or (taint tracking) a local variable derived from request/env input, instead of parameter placeholders |
 | `py-weak-hash` | LOW | `hashlib.md5`/`hashlib.sha1` usage |
 | `py-pickle-deserialization` | HIGH | `pickle.load`/`pickle.loads` usage |
 | `py-yaml-unsafe-load` | MEDIUM | `yaml.load(...)` without `Loader=yaml.SafeLoader`/`CSafeLoader` |
@@ -51,80 +81,158 @@ Other languages are still out of scope — revisit per-language the same way Pyt
 | `py-tls-verify-disabled` | HIGH | `requests.*(..., verify=False)` or `ssl._create_unverified_context()` |
 | `py-flask-debug-enabled` | MEDIUM | `app.run(..., debug=True)` in a file that imports `flask` |
 | `py-jinja2-autoescape-disabled` | MEDIUM | `Environment(..., autoescape=False)` in a file that imports `jinja2` |
+| `py-open-redirect` | MEDIUM | Flask `redirect(...)` with a target built from `request` (directly, or through a local variable — taint tracking) or via f-string/%/concatenation/`.format`, in a file that imports `flask` |
+| `py-jwt-verify-disabled` | HIGH | `jwt.decode(..., verify=False)` |
+| `py-cors-wildcard` | MEDIUM | `response.headers['Access-Control-Allow-Origin'] = '*'` |
+| `py-insecure-cookie` | MEDIUM | `set_cookie(..., secure=False)` or `httponly=False` |
+| `py-path-traversal` | HIGH | `open(...)` with a path built from `request` (directly, or through a local variable — taint tracking) or via f-string/%/concatenation/`.format` |
+| `py-cookie-missing-flags` | LOW | `set_cookie(...)` that never passes `secure=`/`httponly=` at all |
+| `py-ssrf` | HIGH | `requests.get/post/put/delete/head/patch(...)` with a URL derived from request/env input (directly, or through a local variable — taint tracking) or built via f-string/%/concatenation/`.format` |
+| `py-xxe` | HIGH | `lxml.etree.XMLParser(resolve_entities=True)` |
+| `py-ssti` | HIGH | Flask `render_template_string(...)` with a template-source argument derived from request/env input (directly, or through a local variable — taint tracking) or built via f-string/%/concatenation/`.format` |
+| `py-nosqli` | HIGH | pymongo `find`/`find_one`/`find_one_and_update`/`find_one_and_delete`/`update_one`/`update_many`/`delete_one`/`delete_many` with a filter argument that is itself (directly, or through a local variable — taint tracking) request/env-derived, rather than a literal filter with individually-typed fields |
+| `py-insecure-tempfile` | MEDIUM | `tempfile.mktemp()` called at all |
+| `py-unsafe-reflection` | HIGH | `importlib.import_module(...)` with a module-name argument that is itself (directly, or through a local variable — taint tracking) request/env-derived |
+| `py-predictable-prng-seed` | MEDIUM | `random.seed(...)` called with a compile-time integer literal |
 
-## Built-in rules — JavaScript / TypeScript / TSX (11)
+## Built-in rules — JavaScript / TypeScript / TSX (19)
 
 Applies to `.js`/`.jsx`/`.mjs`/`.cjs` (javascript grammar), `.ts`/`.mts`/`.cts` (typescript grammar), and `.tsx` (tsx grammar). `js-react-dangerously-set-innerhtml` only runs against the js/tsx grammars — plain TypeScript can't contain JSX.
 
 | Rule | Severity | Detects |
 |---|---|---|
 | `js-hardcoded-secret` | MEDIUM | A literal string assigned to a variable named `password`/`secret`/`apikey`/`token` |
-| `js-eval-detected` | HIGH | `eval(...)` or `new Function(...)` called at all |
-| `js-command-injection` | HIGH | `child_process.exec`/`execSync` with a command built via template-literal interpolation or `+` concatenation instead of a literal |
-| `js-sql-injection` | HIGH | `.query(`/`.execute(` with a query built via template-literal interpolation or `+` concatenation instead of parameterized placeholders |
+| `js-eval-detected` | HIGH | `eval(...)`, `new Function(...)`, or `vm.runInNewContext`/`runInThisContext`/`runInContext` called at all |
+| `js-command-injection` | HIGH | `child_process.exec`/`execSync` with a command built via template-literal interpolation or `+` concatenation, or (taint tracking) a local variable derived from request/env input, instead of a literal; or `child_process.spawn`/`execFile` called with `{ shell: true }`, reintroducing the shell-injection risk the argument-array form exists to avoid |
+| `js-sql-injection` | HIGH | `.query(`/`.execute(` with a query built via template-literal interpolation or `+` concatenation, or (taint tracking) a local variable derived from request/env input, instead of parameterized placeholders |
 | `js-weak-hash` | LOW | `crypto.createHash('md5')` or `crypto.createHash('sha1')` |
 | `js-insecure-random-for-secrets` | INFO | `Math.random()` used inside a function whose name suggests it generates a token/session/secret |
 | `js-tls-verify-disabled` | HIGH | An object literal with `rejectUnauthorized: false` |
 | `js-dom-xss-innerhtml` | MEDIUM | `.innerHTML = ...` assigned a non-literal value |
 | `js-react-dangerously-set-innerhtml` | MEDIUM | `dangerouslySetInnerHTML` used at all (js/tsx only) |
-| `js-open-redirect` | MEDIUM | `res.redirect(...)` with a target built from `req`/`request` or from template-literal interpolation/concatenation |
+| `js-open-redirect` | MEDIUM | `res.redirect(...)` with a target built from `req`/`request` (directly, or through a local variable — taint tracking) or from template-literal interpolation/concatenation |
 | `js-jwt-none-algorithm` | HIGH | An object literal with `algorithm: 'none'` |
+| `js-cors-wildcard` | MEDIUM | `res.setHeader('Access-Control-Allow-Origin', '*')` (also matches a plain `.header(...)` call of the same shape) |
+| `js-insecure-cookie` | MEDIUM | An object literal with `httpOnly: false` or `secure: false`; or `sameSite: 'none'` set without a sibling `secure: true` in the same options object |
+| `js-path-traversal` | HIGH | `fs.readFile`/`readFileSync`/`createReadStream` with a path built from `req`/`request` (directly, or through a local variable — taint tracking) or via template-literal interpolation/concatenation |
+| `js-cookie-missing-flags` | LOW | `.cookie(name, value, ...)` called with no options object, or an options object literal that never sets `httpOnly`/`secure` |
+| `js-ssti` | HIGH | `ejs.render(...)`/`ejs.compile(...)` with a template-source argument derived from request/env input (directly, or through a local variable — taint tracking) or built via template-literal interpolation/concatenation |
+| `js-nosqli` | HIGH | Mongoose/MongoDB `find`/`findOne`/`findOneAndUpdate`/`findOneAndDelete`/`updateOne`/`updateMany`/`deleteOne`/`deleteMany` with a filter argument that is itself (directly, or through a local variable — taint tracking) request/env-derived, rather than a literal filter with individually-typed fields |
+| `js-unsafe-reflection` | HIGH | `require(...)` with a module-specifier argument that is itself (directly, or through a local variable — taint tracking) request/env-derived |
+| `js-ssrf` | HIGH | `fetch(...)` or `axios.get/post/put/delete(...)` with a URL derived from request/env input (directly, or through a local variable — taint tracking) or built via template-literal interpolation/concatenation |
 
-## Built-in rules — PHP (10)
+## Built-in rules — PHP (20)
 
 | Rule | Severity | Detects |
 |---|---|---|
 | `php-hardcoded-secret` | MEDIUM | A literal string assigned to a variable named `password`/`secret`/`apikey`/`token` |
 | `php-eval-detected` | HIGH | `eval(...)` called at all |
-| `php-command-injection` | HIGH | `system`/`exec`/`shell_exec`/`passthru`/`popen`/`proc_open` with a command built via `.` concatenation or string interpolation instead of a literal |
-| `php-sql-injection` | HIGH | `->query(`/`->exec(` (PDO/mysqli OOP style) with a query built via concatenation/interpolation instead of a prepared-statement placeholder |
+| `php-command-injection` | HIGH | `system`/`exec`/`shell_exec`/`passthru`/`popen`/`proc_open` with a command built via `.` concatenation or string interpolation, or (taint tracking) a local variable derived from `$_GET`/`$_POST`/`$_REQUEST`/`$_COOKIE`/`$_SERVER`/`$_FILES`/`getenv()`, instead of a literal |
+| `php-sql-injection` | HIGH | `->query(`/`->exec(` (PDO/mysqli OOP style) with a query built via concatenation/interpolation, or (taint tracking) a local variable derived from a superglobal/env input, instead of a prepared-statement placeholder |
 | `php-weak-hash` | LOW | `md5()`/`sha1()`, or `hash('md5'/'sha1', ...)` |
 | `php-insecure-deserialization` | HIGH | `unserialize(...)` called at all |
 | `php-insecure-random-for-secrets` | INFO | `rand()`/`mt_rand()` used inside a function whose name suggests it generates a token/session/secret |
 | `php-tls-verify-disabled` | HIGH | An array literal with `'verify_peer'`/`'verify_peer_name' => false`, or `curl_setopt(..., CURLOPT_SSL_VERIFYPEER`/`CURLOPT_SSL_VERIFYHOST, false)` |
 | `php-lfi-include` | HIGH | `include`/`include_once`/`require`/`require_once` with a non-literal path |
 | `php-preg-replace-eval-modifier` | HIGH | `preg_replace(...)` whose pattern uses the `/e` modifier (evaluates the replacement as PHP code) |
+| `php-open-redirect` | MEDIUM | `header("Location: " . $value)` where the value is built via concatenation/interpolation instead of a literal |
+| `php-jwt-none-algorithm` | HIGH | An array literal with `'alg' => 'none'` |
+| `php-cors-wildcard` | MEDIUM | `header("Access-Control-Allow-Origin: *")` |
+| `php-insecure-cookie` | MEDIUM | An array literal with `'secure' => false` or `'httponly' => false` (the PHP 7.3+ `setcookie(..., array $options)` form) |
+| `php-cookie-missing-flags` | LOW | `setcookie(...)` whose options array never sets `'secure'`/`'httponly'`, or whose positional-argument call never reaches the `$secure`/`$httponly` parameters |
+| `php-ssrf` | HIGH | `file_get_contents(...)` or `curl_setopt(..., CURLOPT_URL, ...)` with a URL built via concatenation/interpolation, or (taint tracking) a local variable derived from a superglobal/env input |
+| `php-xxe` | HIGH | `libxml_disable_entity_loader(false)` |
+| `php-nosqli` | HIGH | MongoDB driver `find`/`findOne`/`updateOne`/`updateMany`/`deleteOne`/`deleteMany` with a filter argument that is itself (directly, or through a local variable — taint tracking) a superglobal/env-derived value, rather than a literal filter with individually-typed fields |
+| `php-unsafe-reflection` | HIGH | `call_user_func(...)`/`call_user_func_array(...)` with a callback argument that is itself (directly, or through a local variable — taint tracking) a superglobal/env-derived value |
+| `php-predictable-prng-seed` | MEDIUM | `srand(...)`/`mt_srand(...)` called with a compile-time integer literal |
 
-## Built-in rules — Ruby (10)
+## Built-in rules — Ruby (20)
 
 | Rule | Severity | Detects |
 |---|---|---|
 | `ruby-hardcoded-secret` | MEDIUM | A literal string assigned to a variable named `password`/`secret`/`apikey`/`token` |
-| `ruby-eval-detected` | HIGH | `eval(...)` called at all |
-| `ruby-command-injection` | HIGH | `system`/`exec`/`spawn` with a command built via `+` concatenation/interpolation instead of a literal, or a backtick/`%x{}` subshell that interpolates a value |
-| `ruby-sql-injection` | HIGH | `where`/`find_by_sql`/`execute`/`select_all`/`select_one`/`exec_query` with a query built via string interpolation or concatenation instead of a bound parameter |
+| `ruby-eval-detected` | HIGH | `eval(...)` called at all, or `instance_eval`/`class_eval`/`module_eval` called with a string argument (the block form, `class_eval do ... end`, is ordinary metaprogramming and is not flagged) |
+| `ruby-command-injection` | HIGH | `system`/`exec`/`spawn`/`popen` (e.g. `IO.popen`) with a command built via `+` concatenation/interpolation, a backtick/`%x{}` subshell that interpolates a value, or (taint tracking) a local variable derived from params/env input, instead of a literal |
+| `ruby-sql-injection` | HIGH | `where`/`find_by_sql`/`execute`/`select_all`/`select_one`/`exec_query` with a query built via string interpolation or concatenation, or (taint tracking) a local variable derived from params/env input, instead of a bound parameter |
 | `ruby-weak-hash` | LOW | `Digest::MD5`/`Digest::SHA1` usage |
 | `ruby-insecure-deserialization` | HIGH | `Marshal.load(...)`, or `YAML.load(...)` (as opposed to `YAML.safe_load`) |
 | `ruby-insecure-random-for-secrets` | INFO | `Kernel#rand` used inside a method whose name suggests it generates a token/session/secret |
 | `ruby-tls-verify-disabled` | HIGH | `OpenSSL::SSL::VERIFY_NONE` used anywhere |
 | `ruby-mass-assignment` | MEDIUM | `params.permit!` (bypasses Rails strong parameters entirely) |
-| `ruby-open-redirect` | MEDIUM | `redirect_to(...)` with a target built from `params`/`request` or from string interpolation/concatenation |
+| `ruby-open-redirect` | MEDIUM | `redirect_to(...)` with a target built from `params`/`request` (directly, or through a local variable — taint tracking) or from string interpolation/concatenation |
+| `ruby-jwt-none-algorithm` | HIGH | `alg: 'none'` in a hash literal, or `JWT.encode(..., 'none')` |
+| `ruby-cors-wildcard` | MEDIUM | `headers['Access-Control-Allow-Origin'] = '*'` |
+| `ruby-insecure-cookie` | MEDIUM | A hash literal with `secure: false` or `httponly: false` |
+| `ruby-path-traversal` | HIGH | `File.open`/`File.read` with a path built from `params`/`request` (directly, or through a local variable — taint tracking) or via interpolation/concatenation |
+| `ruby-cookie-missing-flags` | LOW | `cookies[...] = ...` assigning a plain value, or a hash that never sets `secure:`/`httponly:` |
+| `ruby-ssrf` | HIGH | `Net::HTTP.get(...)` or `URI.open(...)` with a URL derived from params/env input (directly, or through a local variable — taint tracking) or built via interpolation/concatenation |
+| `ruby-xxe` | HIGH | `Nokogiri::XML::ParseOptions::NOENT` used anywhere, or a `config.noent` call in a Nokogiri parse-options block |
+| `ruby-ssti` | HIGH | `ERB.new(...)` with a template-source argument derived from params/env input (directly, or through a local variable — taint tracking) or built via interpolation/concatenation |
+| `ruby-unsafe-reflection` | HIGH | `send`/`public_send`/`__send__` with a method-name argument that is itself (directly, or through a local variable — taint tracking) params/env-derived (a literal symbol, `obj.send(:foo)`, is not flagged) |
+| `ruby-predictable-prng-seed` | MEDIUM | `srand(...)` called with a compile-time integer literal |
 
-## Built-in rules — Java (9)
+## Built-in rules — Java (19)
 
 | Rule | Severity | Detects |
 |---|---|---|
 | `java-hardcoded-secret` | MEDIUM | A literal string assigned to a variable named `password`/`secret`/`apikey`/`token` |
-| `java-command-injection` | HIGH | `Runtime.getRuntime().exec(...)` or `new ProcessBuilder(...)` with a command built via `+` concatenation instead of a literal/argument array |
-| `java-sql-injection` | HIGH | `Statement`'s `execute`/`executeQuery`/`executeUpdate` with a query built via `+` concatenation instead of a `PreparedStatement` placeholder |
+| `java-command-injection` | HIGH | `Runtime.getRuntime().exec(...)` or `new ProcessBuilder(...)` with a command built via `+` concatenation, or (taint tracking) a local variable derived from request/env input, instead of a literal/argument array |
+| `java-sql-injection` | HIGH | `Statement`'s `execute`/`executeQuery`/`executeUpdate` with a query built via `+` concatenation, or (taint tracking) a local variable derived from request/env input, instead of a `PreparedStatement` placeholder |
 | `java-weak-hash` | LOW | `MessageDigest.getInstance("MD5"/"SHA1"/"SHA-1")` |
 | `java-weak-cipher` | MEDIUM | `Cipher.getInstance(...)` where the algorithm string contains `DES`, `RC4`, or `ECB` |
 | `java-insecure-deserialization` | HIGH | `.readObject()` called at all (`ObjectInputStream`) |
 | `java-insecure-random-for-secrets` | INFO | `new Random()` used inside a method whose name suggests it generates a token/session/secret |
 | `java-tls-trust-manager-bypass` | HIGH | A custom `X509TrustManager`/`HostnameVerifier` implementation |
 | `java-xxe` | HIGH | `DocumentBuilderFactory`/`SAXParserFactory`/`XMLInputFactory` `.newInstance()` called at all (vulnerable to XXE unless explicitly hardened) |
+| `java-open-redirect` | MEDIUM | `response.sendRedirect(...)` with a target built from `request`/`req` (directly, or through a local variable — taint tracking) or via `+` concatenation |
+| `java-cors-wildcard` | MEDIUM | `response.setHeader("Access-Control-Allow-Origin", "*")` (also matches `addHeader`) |
+| `java-insecure-cookie` | MEDIUM | `cookie.setSecure(false)` or `cookie.setHttpOnly(false)` |
+| `java-path-traversal` | HIGH | `new File(...)`/`FileInputStream(...)`/`FileReader(...)` with a path built from `request`/`req` (directly, or through a local variable — taint tracking) or via `+` concatenation |
+| `java-cookie-missing-flags` | LOW | `new Cookie(...)` in a method body where `setSecure(true)`/`setHttpOnly(true)` is never called anywhere in that same body |
+| `java-ssrf` | HIGH | `new URL(...)` with an argument derived from request input (directly, or through a local variable — taint tracking) or built via `+` concatenation |
+| `java-yaml-unsafe-load` | HIGH | `new Yaml().load(...)` — the zero-argument (default) SnakeYAML constructor only, not `new Yaml(anyArg).load(...)` |
+| `java-eval-detected` | HIGH | `.eval(...)` (e.g. `javax.script.ScriptEngine`) with an argument built via `+` concatenation, or a local variable derived from request/env input — a literal/hardcoded script argument is not flagged |
+| `java-unsafe-reflection` | HIGH | `Class.forName(...)` with a class-name argument that is itself (directly, or through a local variable — taint tracking) request/env-derived |
+| `java-predictable-prng-seed` | MEDIUM | `new Random(...)` called with a compile-time integer literal |
 
 ## Honest ceiling
 
 This is a curated, query-based linter, not a Semgrep replacement — yet. Specifically it has:
 
-- **No taint tracking.** Rules flag syntactic *candidates* (e.g. "this SQL query is built with an f-string"); they can't trace whether the interpolated value actually originates from untrusted input. Expect a real false-positive rate that needs human triage.
+- **Taint tracking: all six languages, intraprocedural.** Go's version (`internal/sast/taint.go`) walks `go/ast`; the other five (`internal/sast/taint_ts.go` plus per-language glue in each language's own file) walk the tree-sitter parse tree via the same idea — track local variables assigned (directly, or through concatenation/interpolation/a wrapping call) from a recognized taint source, within one function/method/lambda/closure body, so a sink rule sees through one local variable between the source and the call site (`next := r.URL.Query().Get("next")`/`next_url = request.args.get("next")`/`const next = req.query.next`/`$arg = $_GET['arg']`/`next_url = params[:next]`/`String next = request.getParameter("next")`, in each language respectively, all now fire on the corresponding open-redirect rule instead of requiring the source expression directly at the call site). Sources recognized per language: Go — `r`/`req`/`request`-rooted, `os.Getenv`/`os.LookupEnv`; Python — `request`-rooted, `os.getenv`/`os.environ`; JS/TS — `req`/`request`-rooted, `process.env`; PHP — `$_GET`/`$_POST`/`$_REQUEST`/`$_COOKIE`/`$_SERVER`/`$_FILES`, `getenv()`; Ruby — `params`/`request`-rooted, `ENV`; Java — `request`/`req`-rooted, `System.getenv()`. Wired into whichever of `*-open-redirect`/`*-path-traversal`/`*-command-injection`/`*-sql-injection` already had an argument to inspect: all four for Go/Python/JS/Ruby/Java; PHP only has `php-command-injection`/`php-sql-injection` wired in (`php-open-redirect` is a `header()`-text-substring rule, a fundamentally different shape that taint tracking doesn't fit without value propagation, not just source tracking — see the `php-open-redirect` bullet below; PHP has no `php-path-traversal` rule to begin with, `php-lfi-include` already flags any non-literal argument unconditionally so taint tracking adds nothing there). Go's `checkPyCommandInjection`-equivalent (Python's `py-command-injection`) similarly wasn't touched: it flags `os.system(...)`/`subprocess(..., shell=True)` unconditionally regardless of the command argument, so there's no argument-shape check for taint tracking to extend.
+  - Ceiling, same across all six: a linear pass over the function body in source order, not a real CFG (an assignment inside an `if` taints for the rest of the function on every path, not just the branch that ran); taint doesn't survive a function call — a value passed into a helper and returned tainted isn't tracked (`TestGoTaintDoesNotCrossFunctionCalls` pins this for Go; same behavior, unverified by a dedicated test, on the other five).
+  - Verified before writing any of the tree-sitter-side code (this project's usual rule): every function/method/lambda/closure node type across all five grammars exposes its body via a field literally named `"body"` — including single-expression arrow/lambda bodies that aren't a block at all — and `assignment`/`assignment_expression`-shaped nodes use `left`/`right` field names consistently across Python/PHP/Ruby/JS/Java. Confirmed by dumping real parse trees, not assumed from convention.
+  - Env-var-source detection (`os.getenv(`/`process.env.`/`getenv(`/`ENV[`/`System.getenv(`) is a raw source-text prefix check on the node, not a structural decomposition of the call/member-access shape — cheap, and sufficient for a single-node source read; would need to become structural if a language's source list grows past one or two shapes.
 - **No interprocedural analysis.** Each function body is analyzed alone; there's no call graph.
 - **No general metavariable pattern language.** Python, JS/TS, PHP, Ruby, and Java rules are individually-compiled tree-sitter queries (closer to Semgrep's own matching primitive than Go's hand-rolled `ast.Inspect` walks are, but each is still a fixed query plus bespoke Go filtering, not a shared pattern DSL a user can extend). Go rules remain bespoke `go/ast` predicates.
 - **Parser ceiling:** whatever `gotreesitter`'s grammars don't parse gets silently skipped, same policy as Go. Verified against a real, hand-picked set of modern-syntax constructs per language at adoption time (f-strings/walrus/match for Python; optional chaining/decorators/generics/JSX for JS/TS; enums/readonly/named-args/nullsafe/match/attributes/union-types/first-class-callables/arrow-fns/constructor-promotion for PHP; safe-navigation/pattern-matching/endless-methods/keyword-args/heredocs for Ruby; records/sealed-interfaces/switch-expressions/text-blocks/var/try-with-resources/instanceof-patterns for Java); not exhaustively fuzzed against the full modern grammar of any of them.
-- **`js-command-injection`/`js-open-redirect`/`ruby-open-redirect` name-match only:** `child_process`/`cp`, `req`/`request`, and `params` are matched by identifier name, not import/framework resolution — an unusually-named alias won't be caught, and (unlike Python's `fileImports` check used for the Flask/Jinja2 rules) there's no equivalent import-verification step here yet.
+- **`js-command-injection`/`js-open-redirect`/`ruby-open-redirect`/`go-open-redirect`/`py-open-redirect`/`java-open-redirect` name-match only:** `child_process`/`cp`, `req`/`request`/`r`, and `params` are matched by identifier name, not import/framework resolution or data flow — an unusually-named alias won't be caught, and (unlike Python's `fileImports` check used for the Flask/Jinja2/`py-open-redirect` rules) there's no equivalent import-verification step for the other languages' open-redirect rules yet. **Every `*-open-redirect` rule now sees through one local variable** via the taint trackers above; the remaining ceiling on all of them is everything *else* taint tracking doesn't do (no CFG, no cross-function tracking — see the taint-tracking bullet above) plus the identifier-name-matching caveat in this bullet.
+- **`php-open-redirect`/`php-cors-wildcard` are `header()`-shape only:** both key off a raw case-insensitive substring match (`"location:"` / `"access-control-allow-origin"`) inside whatever string is passed to `header(...)`, not a structured header-name parse — an argument that happens to contain that substring elsewhere (e.g. in an unrelated comment-like string) would false-positive, and framework-level redirect/CORS helpers (Laravel's `redirect()`, Symfony's `Response` object) that don't call `header()` directly aren't seen at all.
+- **`*-jwt-none-algorithm` matches shape/name only, not a resolved JWT library call:** `js`/`php`/`ruby`'s object-literal/array/hash checks (`algorithm`/`alg` key set to `'none'`) and Go's `jwt.SigningMethodNone` identifier fire regardless of which JWT package (if any) is actually in scope — same "flag the candidate, let a human confirm" tradeoff as the deserialization/XXE rules. `py-jwt-verify-disabled` covers PyJWT's `verify=False` kwarg specifically, a different (and arguably more common) way the same class of bug shows up in Python; it doesn't check for an `algorithm='none'` kwarg the way the other four languages do.
+- **`*-cors-wildcard` matches call/assignment shape only:** any method named `setHeader`/`header`/`addHeader` (JS, Java) or any `headers[...]`/`response.headers[...]` assignment (Ruby, Python) with the right literal key/value fires, regardless of the receiver's actual type — a coincidentally-named method or variable on an unrelated type would false-positive.
+- **`*-insecure-cookie` only catches an *explicit* `false`.** It flags `secure: false`/`httponly: false` (or the Go/Java setter equivalents) written out. `*-cookie-missing-flags` (below) covers the absence case instead.
+- **`*-cookie-missing-flags` is a call/co-occurrence-shape heuristic, not real type or framework resolution.** A genuine "is this actually a cookie" answer needs an import-aware type checker — knowing that a given `res` is really an Express response, that a given `Cookie` is really `javax.servlet.http.Cookie` and not a same-named user class — which is a fundamentally different, much larger piece of infrastructure than every other rule in this file, and this project deliberately doesn't have one (see "No taint tracking"/"No interprocedural analysis" above). What's here instead reuses the same method-name/co-occurrence matching every other rule in this document already relies on, just pointed at *absence* rather than *presence*:
+  - **Go/PHP(array-form)/JS/Ruby** check a single call site or literal directly: does this `http.Cookie{...}`/`setcookie(..., array $options)`/`.cookie(name, val, opts)`/`cookies[...] = {...}` set the flag keys at all. No cross-statement reasoning needed — the whole answer is in one node.
+  - **PHP's positional form** counts arguments — `setcookie()` takes `$secure`/`$httponly` as its 6th/7th positional params, so a call with fewer than 6 or 7 arguments provably never passes them.
+  - **Python's `set_cookie`** checks the keyword-argument list of one call the same way.
+  - **Java is the one genuine compromise**, because `javax.servlet.http.Cookie` is built via constructor-then-setter rather than one literal: it scans the *whole enclosing method body* for `setSecure`/`setHttpOnly` calls by name, not tied to the specific `Cookie` variable. Two cookies hardened differently in the same method will confuse it in both directions (a false-negative on the unhardened one, if the other one's setter calls are in scope; per-call source-line placement makes false-positives less likely but not impossible). Splitting the method into a smaller one is a legitimate workaround if this fires wrong.
+  - All of them still match by method/property/type name only, exactly like `*-cors-wildcard` and `*-insecure-cookie` above — a coincidentally-named `.cookie(...)`/`Cookie`/`set_cookie` on an unrelated type will false-positive, and a value stored in a variable and passed in (rather than a literal at the call site) is invisible to all of these, same as everywhere else in this scanner.
+- **`*-path-traversal` flags the same "request-rooted or dynamically-built" candidate shape as the open-redirect rules, with the identical ceiling:** every `*-path-traversal` rule (Go/Python/JS/Ruby/Java) gets the same one-local-variable taint tracking as the open-redirect rules; (Java/JS/Ruby) still request-object name-matching only for the direct case, not import/type resolution. PHP has no `php-path-traversal` — `php-lfi-include` already covers the closest PHP idiom (`include`/`require` with a non-literal path, unconditionally — no taint tracking needed since it already fires on any non-literal argument, plain variable included); a matching `fopen`/`file_get_contents` rule would be pure duplication of that reasoning and was left out.
+- **`go-jwt-none-algorithm` matches the identifier name only:** `jwt.SigningMethodNone`, regardless of which `jwt` package is imported (several Go JWT libraries expose a same-named constant) — flag the candidate, let a human confirm, same tradeoff as the deserialization/XXE rules below.
+- **`go-cors-wildcard` matches call shape only:** any `X.Set("Access-Control-Allow-Origin", "*")` fires, not just `http.ResponseWriter.Header().Set(...)` — a coincidentally-named `Set` method on an unrelated type would false-positive.
 - **`php-sql-injection` covers OOP-style calls only:** `->query(`/`->exec(` (PDO/mysqli object usage). Procedural `mysqli_query()`/`mysql_query()`/`pg_query()` aren't covered — each has a different argument signature (connection first, query in a different position), and the OOP form is the dominant modern idiom; add the procedural forms if they turn out to matter in practice.
 - **`ruby-sql-injection` matches ActiveRecord/Sequel-style method names only:** `where`/`find_by_sql`/`execute`/etc. by identifier, not by verifying the receiver is actually an ActiveRecord model or DB connection — a user-defined method with the same name would false-positive.
 - **`java-sql-injection`/`java-command-injection` match method/type names only:** `executeQuery`/`Runtime`/`ProcessBuilder` etc. by identifier, not by verifying the receiver's declared type is actually `java.sql.Statement` — a user-defined class with a method of the same name would false-positive. `java-tls-trust-manager-bypass` and `java-xxe` deliberately flag unconditionally (any custom TrustManager, any factory creation) rather than trying to detect whether hardening was applied elsewhere — same "flag the candidate, let a human confirm" tradeoff as `php-insecure-deserialization`/`py-pickle-deserialization`.
+- **`*-ssrf` is deliberately narrow to one or two sinks per language, not every HTTP client:** Go covers `net/http` only (no third-party clients like `resty`/`gentleman`); Python covers `requests` only (no `httpx`/`urllib.request.urlopen`); JS covers `fetch`/`axios` only (no `http.get`/`https.get`/`node-fetch`/`got`); PHP covers `file_get_contents`/`curl_setopt(CURLOPT_URL)` only (not the rest of the curl option surface, e.g. `CURLOPT_URL` set via a separate `curl_init($url)` call); Ruby covers `Net::HTTP.get`/`URI.open` only (no `RestClient`/`HTTParty`/`Faraday`); Java covers `new URL(...)`'s single-argument constructor only (the two-argument `new URL(context, spec)` form isn't checked, and neither is `HttpClient`/Apache `HttpGet`). Same "flag the candidate, curated sink list, not exhaustive" tradeoff as every other sink-based rule in this file — expand the list per language if a specific client shows up as a real gap.
+- **`go-insecure-cookie`/`js-insecure-cookie`'s `SameSite=None`-without-`Secure` check is Go/JS only, deliberately narrower than most rounds in this file.** Modern browsers already reject a `SameSite=None` cookie that lacks `Secure` outright (per the spec), so this rule is a defense-in-depth/misconfiguration-audit check, not "this is definitely exploitable" the way `*-ssti`/`*-unsafe-reflection` are — and it's why *missing* `SameSite` entirely isn't flagged at all (browsers default to `Lax`, a reasonable default, unlike missing `Secure`/`HttpOnly` which has no equivalent safety net). Python/PHP/Ruby/Java's cookie APIs could get the equivalent check, but weren't done this round — same co-occurrence-scan shape as Go's (whole-literal scan for a sibling flag), not fundamentally harder, just not yet built. A natural next slice if this family gets revisited rather than a "can't be done" skip like PHP's SSTI/open-redirect gaps elsewhere in this file.
+- **`*-predictable-prng-seed` (Go/Python/Ruby/PHP/Java) is a distinct anti-pattern from `*-insecure-random-for-secrets`, not a variant of it.** The existing `*-insecure-random-for-secrets` rules flag a *weak algorithm choice* (`math/rand`/`random`/`Math.random`/`rand()`/`Kernel#rand`) used specifically inside a security-sounding function — the problem is the module. `*-predictable-prng-seed` flags an *explicit literal seed* passed to any PRNG, anywhere, regardless of what it's later used for — the problem is that a fixed seed makes the entire output sequence deterministic and reproducible by anyone who reads the source, even a cryptographically-fine generator's output becomes worthless once seeded this way (well, math/rand-family generators are never crypto-fine regardless, but the seed-predictability problem is orthogonal to and compounds the algorithm-choice problem). Literal-only: `srand(some_computed_value)`/`new Random(configuredValue)` — a non-literal seed argument doesn't match, since verifying that value is itself attacker-influenced would need the same taint infrastructure the reflection rules use, and a non-literal seed is far more often intentional (e.g. deliberately reproducible test fixtures) than attacker-reachable. JS has no rule here: `Math.random()` takes no seed argument at all, so there's no API surface to misuse this way.
+- **`*-unsafe-reflection` (Ruby/PHP/Java/JS/Python) is gated on taint alone, never `isDynamicString`, and that's deliberate, not an oversight.** Every sink in this family — `send`/`public_send`/`__send__`, `call_user_func(_array)`, `Class.forName`, `require`, `importlib.import_module` — is routinely called in ordinary code with a non-literal argument that isn't attacker-controlled at all (a JDBC driver class name from a properties file, a plugin path built from a hardcoded list, a module name from a loop): including a dynamic-string-built check the way the injection rules do would false-positive on exactly that idiom. What actually makes these dangerous is the argument being reachable from request/env input specifically, so only the taint predicate is used. The single most important negative case to keep working across all five: `send`/`call_user_func`/`Class.forName`/etc. called with a *literal* value (a symbol, a string constant) never matches either the taint predicate or (since it isn't checked) the dynamic-string predicate — pinned by a dedicated negative-case test per language in `internal/sast/unsafe_reflection_test.go`. Go has no rule in this family: no string-to-reflection primitive exists there the way it does in the other five (`reflect` requires a `Type`/`Value`, not a bare string).
+- **`ruby-eval-detected`'s `instance_eval`/`class_eval`/`module_eval` coverage is deliberately string-argument-only, verified against real parse trees before writing the query.** The block form (`klass.class_eval do ... end`) is ordinary, extremely common Ruby metaprogramming (Rails, RSpec, DSLs) and is not remotely equivalent to `eval()` — parses to a `block`-field call with no `arguments` field at all, confirmed directly rather than assumed, and the query's `arguments: (argument_list . (_) @arg)` requirement is what excludes it (not a name check — there's no way to tell "safe metaprogramming" from "dangerous string eval" by method name alone, only by which field the argument arrived through). Getting this wrong in either direction would have been bad: too broad and it fires on every Rails app; too narrow and the real vulnerable form goes undetected.
+- **`java-eval-detected` matches `.eval(` by method name only, not a verified `ScriptEngine`/JEXL/MVEL receiver type** — same "flag the candidate" tradeoff as `java-sql-injection`'s `executeQuery` name-matching. Gated on the argument being non-literal (unlike Python's `py-eval-exec`, which flags `eval()`/`exec()` unconditionally) because a literal/hardcoded script argument to a script engine is a normal, common pattern — Python's `eval()` essentially never has a legitimate call site, script-engine `eval()` regularly does.
+- **`java-yaml-unsafe-load` requires a zero-argument `new Yaml()` constructor at the call site, not real constructor-argument resolution.** `new Yaml(new SafeConstructor()).load(...)` is correctly not flagged (has a constructor argument); but `Yaml y = new Yaml(); y.load(x);` split across two statements isn't flagged either — same "direct chain only" ceiling as `go-ssti`'s `template.New(...).Parse(...)` — and `new Yaml(someVariable).load(...)` isn't flagged even if `someVariable` turns out to be an unsafe custom `Constructor`, since ojo has no type resolution to check what that argument actually is.
+- **`py-insecure-tempfile` is deliberately Python-only.** `tempfile.mktemp()` has no safe usage — Python's own documentation deprecates it for exactly the race condition this rule flags — so an unconditional flag is accurate, unlike e.g. `*-xxe`'s narrower per-language scoping. Other languages don't get an equivalent rule because they don't have an equivalently-deprecated insecure-by-construction API in the same class: Ruby's `Tempfile`, PHP's `tempnam()`, Java's `File.createTempFile()`, and Go's `os.CreateTemp()` all atomically create the file as part of name generation, so there's no matching anti-pattern to flag.
+- **`*-nosqli` covers JS/Python/PHP only, and only fires when the *entire* filter argument is tainted, not when individual field values inside a literal object/array are.** `Model.find(req.body)` fires (the whole filter is attacker-controlled — an attacker can inject `{"password": {"$ne": null}}`-style operators); `Model.find({ email: req.body.email })` doesn't (a literal filter object with one tainted *value*, the normal safe idiom) — the taint predicates used (`pyExprTainted`/`jsExprTainted`/`phpExprTainted`) don't look inside object/array/dict literals at all, by design, so this distinction falls out for free rather than needing special-casing. Ruby was skipped because Mongoid's `.where(...)` sink is already caught by the existing `ruby-sql-injection` rule (same method name, same taint check) — a separate rule would be pure duplication. Go and Java were skipped for the same reason as `*-ssti`'s Java/PHP skip: `find`/`findOne`/`updateOne` etc. are common enough method names on unrelated types that name-matching without type resolution has a real collision risk, and the vulnerable "pass the whole request object as a query filter" idiom is less commonly demonstrated in either language's typically-more-structured (BSON-struct/POJO) MongoDB usage.
+- **`*-ssti` covers Go/Python/JS/Ruby only — PHP and Java are skipped on purpose.** Twig's SSTI sink (`$twig->createTemplate($tainted)`) is a method call on a variable whose type ojo has no way to confirm is actually `Twig\Environment` — flagging it would mean flagging any `->createTemplate()` call on any object, a real false-positive magnet with no accurate signal available (same reasoning as skipping `php-open-redirect`'s framework-level redirect helpers). FreeMarker/Velocity's Java sinks are multi-step (build a `Configuration`, wrap the tainted string in a `StringReader`, construct a `Template`) rather than one call with an inline template-source argument, so there's no single-node shape to match without deeper flow analysis than this scanner does. `go-ssti` deliberately matches the exact `template.New(...).Parse(...)` chain rooted at the actually-imported `text/template`/`html/template` package name, not a bare `.Parse(` method name — `Parse` alone collides with `time.Parse`/`url.Parse`/`flag.Parse` and would be a false-positive magnet on any Go codebase.
+- **`py-xxe`/`php-xxe`/`ruby-xxe` are narrower than `java-xxe` on purpose, not by oversight.** Java's stdlib XML factories (`DocumentBuilderFactory`, etc.) resolve external entities by default, so `java-xxe` can correctly flag *any* factory creation unconditionally. Python's `xml.etree`/`xml.dom.minidom` (stdlib) and JS's common XML libraries don't resolve external entities by default at all — an unconditional flag there would be mostly false alarms, so neither gets a rule, and `py-xxe` targets `lxml` specifically, the one common Python XML library where entity resolution is an explicit opt-in (`resolve_entities=True`) rather than a default to avoid. `php-xxe` and `ruby-xxe` are single named-flag/constant checks (`libxml_disable_entity_loader(false)`, `Nokogiri::XML::ParseOptions::NOENT`/`config.noent`) for the same reason — PHP 8+ disables external entity loading by default (this rule only matters pre-8 or where something explicitly re-enables it) and Nokogiri only substitutes entities when a caller explicitly asks for `NOENT`. Go's `encoding/xml` never resolves external entities at all (no rule, correctly) — none of this is "less coverage," it's matching each language's actual default behavior instead of assuming Java's.
 
 Rules that overlap with the [secret scanner](secret.md) (`go-hardcoded-secret`, `py-hardcoded-secret`, `js-hardcoded-secret`, `php-hardcoded-secret`, `ruby-hardcoded-secret`, `java-hardcoded-secret`) are intentional, not redundant: the secret scanner does line-level regex over raw text; these rules work on the actual parse tree, catching multi-line/formatted literals the regex misses and correctly ignoring matches inside comments or non-assignment string literals.

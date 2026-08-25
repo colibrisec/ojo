@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/colibrisec/ojo/internal/config"
 	"github.com/colibrisec/ojo/internal/image"
 	"github.com/colibrisec/ojo/internal/osv"
 	"github.com/colibrisec/ojo/internal/report"
@@ -13,6 +14,7 @@ import (
 
 func imageCmd() *cobra.Command {
 	var format string
+	var configPath string
 
 	cmd := &cobra.Command{
 		Use:   "image [ref]",
@@ -20,6 +22,14 @@ func imageCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ref := args[0]
+
+			cfg, err := config.Load(configPath)
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
+			if cfg.Format != "" && !cmd.Flags().Changed("format") {
+				format = cfg.Format
+			}
 			pkgs, osLabel, err := image.Scan(cmd.Context(), ref)
 			if err != nil {
 				return err
@@ -60,5 +70,6 @@ func imageCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, sbom, sarif")
+	cmd.Flags().StringVar(&configPath, "config", "", "path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)")
 	return cmd
 }

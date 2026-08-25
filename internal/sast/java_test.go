@@ -88,3 +88,106 @@ func TestJavaScanNoFalsePositiveOnLiteralCommand(t *testing.T) {
 		t.Errorf("expected no issues for a literal ProcessBuilder call, got: %+v", issues)
 	}
 }
+
+const javaNewRules = `class GoServlet {
+    void go(javax.servlet.http.HttpServletRequest request, javax.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        response.sendRedirect(request.getParameter("next"));
+        response.sendRedirect("/home");
+        response.setHeader("Access-Control-Allow-Origin", "*");
+        response.setHeader("Content-Type", "application/json");
+    }
+}
+`
+
+func TestJavaScanFindsNewRules(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "App2.java"), []byte(javaNewRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	counts := map[string]int{}
+	for _, i := range issues {
+		counts[i.RuleID]++
+	}
+	if counts["java-open-redirect"] != 1 {
+		t.Errorf("expected 1 java-open-redirect issue, got %d: %+v", counts["java-open-redirect"], issues)
+	}
+	if counts["java-cors-wildcard"] != 1 {
+		t.Errorf("expected 1 java-cors-wildcard issue, got %d: %+v", counts["java-cors-wildcard"], issues)
+	}
+}
+
+const javaCookieAndPathRules = `class GoServlet {
+    void go(javax.servlet.http.HttpServletRequest request, javax.servlet.http.Cookie cookie) throws java.io.IOException {
+        cookie.setSecure(false);
+        cookie.setHttpOnly(false);
+        new File(request.getParameter("path"));
+        new File("/safe/path");
+    }
+}
+`
+
+func TestJavaScanFindsCookieAndPathTraversal(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "App3.java"), []byte(javaCookieAndPathRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	counts := map[string]int{}
+	for _, i := range issues {
+		counts[i.RuleID]++
+	}
+	if counts["java-insecure-cookie"] != 2 {
+		t.Errorf("expected 2 java-insecure-cookie issues (setSecure + setHttpOnly), got %d: %+v", counts["java-insecure-cookie"], issues)
+	}
+	if counts["java-path-traversal"] != 1 {
+		t.Errorf("expected 1 java-path-traversal issue, got %d: %+v", counts["java-path-traversal"], issues)
+	}
+}
+
+const javaCookieMissingFlagsRules = `class GoServlet {
+    void unhardened() {
+        Cookie c = new Cookie("id", "v");
+        resp.addCookie(c);
+    }
+
+    void hardened() {
+        Cookie c = new Cookie("id2", "v2");
+        c.setSecure(true);
+        c.setHttpOnly(true);
+        resp.addCookie(c);
+    }
+}
+`
+
+func TestJavaScanFindsCookieMissingFlags(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "App4.java"), []byte(javaCookieMissingFlagsRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count := 0
+	for _, i := range issues {
+		if i.RuleID == "java-cookie-missing-flags" {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Errorf("expected 2 java-cookie-missing-flags issues (setSecure + setHttpOnly missing in unhardened() only), got %d: %+v", count, issues)
+	}
+}

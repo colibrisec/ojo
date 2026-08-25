@@ -1,6 +1,30 @@
 # Configuration
 
-ojo is configured entirely through CLI flags — there's no config file yet (see [Roadmap](../roadmap.md)).
+ojo is configured through CLI flags, with an optional `.ojo.yaml` file for repo-wide defaults.
+
+## Config file (`.ojo.yaml`)
+
+Drop a `.ojo.yaml` in the directory you run ojo from to set defaults without repeating flags every invocation:
+
+```yaml
+scanners: vuln,secret,misconfig,sast
+format: sarif
+```
+
+| Key | Mirrors | Applies to |
+|---|---|---|
+| `scanners` | `--scanners` | `ojo fs` only |
+| `format` | `-f`/`--format` | `ojo fs` and `ojo image` |
+
+**Precedence:** an explicit flag always wins, then the config file, then the built-in default (`vuln` / `table`).
+
+ojo looks for `.ojo.yaml` in the current directory by default. Point it elsewhere with `--config`:
+
+```console
+$ ojo fs --config ci/.ojo.yaml .
+```
+
+A missing default `.ojo.yaml` is not an error — it just means no overrides. An explicit `--config path` that doesn't exist *is* an error (almost certainly a typo), and so is an unrecognized key in the file.
 
 ## `--scanners`
 

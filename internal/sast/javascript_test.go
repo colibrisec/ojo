@@ -126,3 +126,89 @@ func TestTSXScanFindsDangerouslySetInnerHTML(t *testing.T) {
 		t.Errorf("expected js-react-dangerously-set-innerhtml to fire, got: %+v", issues)
 	}
 }
+
+const jsCORSVulnerable = `function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Content-Type', 'application/json');
+}
+`
+
+func TestJSScanFindsCORSWildcard(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "app2.js"), []byte(jsCORSVulnerable), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	counts := map[string]int{}
+	for _, i := range issues {
+		counts[i.RuleID]++
+	}
+	if counts["js-cors-wildcard"] != 1 {
+		t.Errorf("expected 1 js-cors-wildcard issue, got %d: %+v", counts["js-cors-wildcard"], issues)
+	}
+}
+
+const jsCookieAndPathRules = `function handler(req, res) {
+  res.cookie('id', 'x', { httpOnly: false, secure: false });
+  res.cookie('theme', 'dark', { httpOnly: true });
+  fs.readFile(req.query.path, cb);
+  fs.readFile('/safe/path', cb);
+}
+`
+
+func TestJSScanFindsCookieAndPathTraversal(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "app3.js"), []byte(jsCookieAndPathRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	counts := map[string]int{}
+	for _, i := range issues {
+		counts[i.RuleID]++
+	}
+	if counts["js-insecure-cookie"] != 2 {
+		t.Errorf("expected 2 js-insecure-cookie issues (httpOnly + secure), got %d: %+v", counts["js-insecure-cookie"], issues)
+	}
+	if counts["js-path-traversal"] != 1 {
+		t.Errorf("expected 1 js-path-traversal issue, got %d: %+v", counts["js-path-traversal"], issues)
+	}
+}
+
+const jsCookieMissingFlagsRules = `function handler(req, res) {
+  res.cookie('id', 'v');
+  res.cookie('id2', 'v2', { maxAge: 1000 });
+  res.cookie('id3', 'v3', { httpOnly: true, secure: true });
+}
+`
+
+func TestJSScanFindsCookieMissingFlags(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "app4.js"), []byte(jsCookieMissingFlagsRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count := 0
+	for _, i := range issues {
+		if i.RuleID == "js-cookie-missing-flags" {
+			count++
+		}
+	}
+	if count != 3 {
+		t.Errorf("expected 3 js-cookie-missing-flags issues (1 for no-options call, 2 for the partial-options call), got %d: %+v", count, issues)
+	}
+}
