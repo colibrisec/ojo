@@ -16,6 +16,7 @@ Scanners (--scanners, comma-separated, ojo fs only):
   secret     hardcoded credentials, API keys, tokens
   misconfig  Dockerfile / Kubernetes / Terraform misconfiguration
   sast       source-level issues (Go, Python, JS/TS, PHP, Ruby, Java)
+  quality    maintainability smells: complexity, length, nesting, params, duplication
 
 Output formats (-f/--format, both commands):
   table      human-readable box-drawn table (default)
@@ -23,8 +24,9 @@ Output formats (-f/--format, both commands):
   sbom       CycloneDX SBOM of discovered packages, skips vulnerability scanning
   sarif      SARIF 2.1.0, for GitHub code scanning and similar tooling`,
 		Example: `  ojo fs .
-  ojo fs --scanners vuln,secret,misconfig,sast .
+  ojo fs --scanners vuln,secret,misconfig,sast,quality .
   ojo fs -f sarif . > results.sarif
+  ojo fs -g .
   ojo image python:3.14-slim`,
 		Version: Version,
 	}

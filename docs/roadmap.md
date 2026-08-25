@@ -19,7 +19,8 @@ ojo is young. This page is the honest, unvarnished list of what it doesn't do ye
 
 - **Secret scanner**: no git history scanning (working tree only), no custom rules file, no suppression/baseline file.
 - **Misconfiguration scanner**: no data-driven policy language (Rego/OPA) — checks are hand-written Go, not a pluggable policy format. Terraform checks cover AWS/Azure/GCP providers, resolve `local.x`/`var.x` (literal defaults only), and correlate resources within one directory, but don't traverse `module` blocks into subdirectories. CloudFormation (YAML or JSON) is covered too, literal values only — unresolved intrinsic functions are skipped. Kubernetes checks don't render Helm charts or resolve Kustomize overlays. No native Azure ARM templates, Ansible, or Helm chart support.
-- **SAST scanner**: covers Go, Python, JavaScript/TypeScript, PHP, Ruby, and Java. No taint tracking, no interprocedural analysis, no general metavariable pattern language — see [SAST scanner](guide/scanner/sast.md) for the full per-language rule lists and honest ceiling.
+- **SAST scanner**: covers Go, Python, JavaScript/TypeScript, PHP, Ruby, and Java. Intraprocedural taint tracking across all six (sees through one local variable between a request/env source and a sink, on whichever rules structurally support it — see the SAST guide for exact coverage); user-authorable custom rules via `--rules-dir` for the five gotreesitter-backed languages (raw tree-sitter queries, not a Semgrep-style metavariable pattern language — no Go, see [SAST scanner: Custom rules](guide/scanner/sast.md#custom-rules)); no interprocedural analysis (taint doesn't cross a function call) — see [SAST scanner](guide/scanner/sast.md) for the full per-language rule lists and honest ceiling.
+- **Code quality scanner** (`--scanners quality`): cyclomatic complexity, function length, nesting depth, parameter count, and cross-file duplicate-code detection, across the same six languages. Thresholds are hardcoded, not yet `.ojo.yaml`-configurable; duplicate detection is textual (line-based), not semantic; no GitLab Code Quality report format yet — see [Code Quality scanner](guide/scanner/quality.md) for the full rule list and honest ceiling.
 - **License scanning**: not implemented.
 - **VEX**: not implemented.
 
@@ -36,7 +37,7 @@ ojo is young. This page is the honest, unvarnished list of what it doesn't do ye
 
 ## Operations
 
-- **No config file** — flags only, nothing like a `.ojo.yaml`.
+- **Config file (`.ojo.yaml`) covers `scanners`/`format` only** — see [Configuration](guide/configuration.md#config-file-ojoyaml). No severity-threshold field yet (see below), and no hierarchical/per-directory config resolution — one file, looked up in the current directory only.
 - **No `--exit-code`/severity-threshold flag** — any finding at all produces exit code 1; there's no "only fail on HIGH and above."
 - **No CI integration guides yet** (GitHub Actions, GitLab CI, etc.) — plain binary invocation works fine in any CI today, there just isn't a written tutorial.
 

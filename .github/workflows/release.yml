@@ -39,8 +39,20 @@ jobs:
           fi
           echo "version=v0.${minor}.${patch}" >> "$GITHUB_OUTPUT"
 
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./...
+
   build:
-    needs: version
+    needs: [version, test]
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -156,7 +168,7 @@ jobs:
           files: dist/*
 
   docker:
-    needs: version
+    needs: [version, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -247,7 +259,7 @@ jobs:
   # on a matching host, so this uses GitHub's free hosted arm64 runner
   # rather than trying to cross-build snaps from a single amd64 host.
   package-snap:
-    needs: version
+    needs: [version, test]
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:

@@ -99,3 +99,123 @@ func TestRubySQLInjectionViaStringInterpolation(t *testing.T) {
 	}
 	t.Errorf("expected ruby-sql-injection to fire for an interpolated .where(...) query, got: %+v", issues)
 }
+
+const rubyNewRules = `class GoController
+  def go
+    redirect_to params[:next]
+  end
+
+  def safe
+    redirect_to "/home"
+  end
+
+  def set_cors
+    headers['Access-Control-Allow-Origin'] = '*'
+    headers['Content-Type'] = 'application/json'
+  end
+
+  def token
+    JWT.encode(payload, key, 'none')
+  end
+
+  ALG = {alg: 'none'}
+end
+`
+
+func TestRubyScanFindsNewRules(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "app2.rb"), []byte(rubyNewRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	counts := map[string]int{}
+	for _, i := range issues {
+		counts[i.RuleID]++
+	}
+	if counts["ruby-cors-wildcard"] != 1 {
+		t.Errorf("expected 1 ruby-cors-wildcard issue, got %d: %+v", counts["ruby-cors-wildcard"], issues)
+	}
+	if counts["ruby-jwt-none-algorithm"] != 2 {
+		t.Errorf("expected 2 ruby-jwt-none-algorithm issues (JWT.encode + alg: 'none' hash), got %d: %+v", counts["ruby-jwt-none-algorithm"], issues)
+	}
+}
+
+const rubyCookieAndPathRules = `class GoController
+  def set_cookie
+    cookies[:session] = { value: 'tok', secure: false, httponly: false }
+  end
+
+  def read(params)
+    File.open(params[:path])
+  end
+
+  def read_safe
+    File.open("/safe/path")
+  end
+end
+`
+
+func TestRubyScanFindsCookieAndPathTraversal(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "app3.rb"), []byte(rubyCookieAndPathRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	counts := map[string]int{}
+	for _, i := range issues {
+		counts[i.RuleID]++
+	}
+	if counts["ruby-insecure-cookie"] != 2 {
+		t.Errorf("expected 2 ruby-insecure-cookie issues (secure + httponly), got %d: %+v", counts["ruby-insecure-cookie"], issues)
+	}
+	if counts["ruby-path-traversal"] != 1 {
+		t.Errorf("expected 1 ruby-path-traversal issue, got %d: %+v", counts["ruby-path-traversal"], issues)
+	}
+}
+
+const rubyCookieMissingFlagsRules = `class GoController
+  def go
+    cookies[:session] = "plain-value"
+  end
+
+  def partial
+    cookies[:session2] = { value: 'tok', expires: 1.hour }
+  end
+
+  def hardened
+    cookies[:session3] = { value: 'tok', secure: true, httponly: true }
+  end
+end
+`
+
+func TestRubyScanFindsCookieMissingFlags(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "app4.rb"), []byte(rubyCookieMissingFlagsRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count := 0
+	for _, i := range issues {
+		if i.RuleID == "ruby-cookie-missing-flags" {
+			count++
+		}
+	}
+	if count != 3 {
+		t.Errorf("expected 3 ruby-cookie-missing-flags issues (1 for plain-value assign, 2 for the partial hash), got %d: %+v", count, issues)
+	}
+}

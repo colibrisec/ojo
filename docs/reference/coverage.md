@@ -50,6 +50,19 @@ What ojo can actually scan today.
 | Java | ✅ (`gotreesitter`-based, 9 rules) |
 | Everything else | ❌ — see [SAST scanner](../guide/scanner/sast.md) for why |
 
+## Code quality languages (`--scanners quality`)
+
+| Language | Status |
+|---|---|
+| Go | ✅ |
+| Python | ✅ |
+| JavaScript / TypeScript / TSX | ✅ |
+| PHP | ✅ |
+| Ruby | ✅ |
+| Java | ✅ |
+
+Same six languages as the SAST scanner, all four AST metrics (complexity/length/nesting/parameter-count) shipped for all six from the start. Duplicate-code detection is language-agnostic (line-based) and isn't scoped per-language the same way. See [Code Quality scanner](../guide/scanner/quality.md).
+
 ## Vulnerability data source
 
 [OSV.dev](https://osv.dev) only, queried live (no local database). This means Alpine/Debian/Ubuntu coverage is exactly whatever OSV itself aggregates from those distros' security trackers.
