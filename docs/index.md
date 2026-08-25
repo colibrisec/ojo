@@ -43,5 +43,5 @@ Most scanners either reimplement vulnerability databases from scratch (unrealist
 
 Head to [Installation](getting-started/installation.md), then [Quick Start](getting-started/quick-start.md).
 
-!!! note "oji is still growing!"
+!!! note "ojo is still growing!"
     ojo is young. See [Roadmap & Limitations](roadmap.md) for an honest list of what's not supported yet — RPM-based images, Kubernetes cluster scanning, license scanning, custom policy languages, and more.
