@@ -11,7 +11,7 @@ func TestScan(t *testing.T) {
 	content := "aws_key = \"AKIAABCDEFGHIJKLMNOP\"\n" +
 		"db_url = \"postgres://admin:hunter2pass@db.internal:5432/prod\"\n" +
 		"note = \"just a normal comment, nothing secret here\"\n"
-	if err := os.WriteFile(filepath.Join(dir, "config.py"), []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -37,11 +37,11 @@ func TestScan(t *testing.T) {
 }
 
 func TestScan_TestFileExclusion(t *testing.T) {
-	t.Run("suppresses placeholder secret in a _test.go file", func(t *testing.T) {
+	t.Run("suppresses placeholder secret in a test config file", func(t *testing.T) {
 		dir := t.TempDir()
 		content := "aws_key = \"AKIAABCDEFGHIJKLMNOP\"\n" +
 			"db_url = \"postgres://admin:hunter2pass@db.internal:5432/prod\"\n"
-		if err := os.WriteFile(filepath.Join(dir, "auth_test.go"), []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "auth.test.yaml"), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
@@ -54,10 +54,10 @@ func TestScan_TestFileExclusion(t *testing.T) {
 		}
 	})
 
-	t.Run("still flags a real-looking secret in a _test.go file", func(t *testing.T) {
+	t.Run("still flags a real-looking secret in a test config file", func(t *testing.T) {
 		dir := t.TempDir()
 		content := "awsKey = \"AKIAJ7QZX9K3M2NPLW4B\"\n"
-		if err := os.WriteFile(filepath.Join(dir, "auth_test.go"), []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "auth.test.yaml"), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
@@ -69,6 +69,50 @@ func TestScan_TestFileExclusion(t *testing.T) {
 			t.Errorf("expected exactly 1 aws-access-key-id issue (real-looking secret must not be suppressed), got %+v", issues)
 		}
 	})
+}
+
+func TestScan_SkipsNonConfigFiles(t *testing.T) {
+	dir := t.TempDir()
+	content := "awsKey = \"AKIAJ7QZX9K3M2NPLW4B\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "auth.go"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(issues) != 0 {
+		t.Errorf("expected secrets in non-config files to be skipped, got %d issues: %+v", len(issues), issues)
+	}
+}
+
+func TestIsConfigFile(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{".env", true},
+		{".env.production", true},
+		{"config.yaml", true},
+		{"config.yml", true},
+		{"settings.json", true},
+		{"Dockerfile", true},
+		{"dockerfile", true},
+		{".npmrc", true},
+		{"id_rsa.pem", true},
+		{"server.key", true},
+		{"NOTES.md", true},
+		{"auth.go", false},
+		{"app.py", false},
+		{"index.js", false},
+		{"README.md", true},
+	}
+	for _, c := range cases {
+		if got := isConfigFile(c.path); got != c.want {
+			t.Errorf("isConfigFile(%q) = %v, want %v", c.path, got, c.want)
+		}
+	}
 }
 
 func TestIsLikelyTestFile(t *testing.T) {

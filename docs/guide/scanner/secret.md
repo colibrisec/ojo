@@ -1,6 +1,6 @@
 # Scanner: Secret
 
-Scans source files for hardcoded credentials using a regex + keyword + entropy rule engine.
+Scans common configuration files for hardcoded credentials using a regex + keyword + entropy rule engine.
 
 Off by default — enable with `--scanners secret` (or combine: `--scanners vuln,secret`).
 
@@ -12,7 +12,13 @@ Each rule has:
 - optional **keywords** — if set, the line must contain one (case-insensitive) before the regex even runs, keeping cheap generic rules fast and lower-noise
 - an optional **minimum Shannon entropy** the matched text must clear, to filter out low-entropy false positives like `password = "changeme"`
 
-Files are skipped if they're binary (null byte in the first 512 bytes) or larger than 5MB.
+Only common configuration files are scanned — not every source file in the tree. This keeps noise and runtime down, since hardcoded secrets overwhelmingly land in config, not application code.
+
+Matched by extension: `.env` (and `.env.*`), `.yaml`, `.yml`, `.json`, `.toml`, `.ini`, `.cfg`, `.conf`, `.properties`, `.xml`, `.pem`, `.key`, `.md`.
+
+Matched by exact filename (case-insensitive): `Dockerfile`, `.npmrc`, `.pypirc`, `.netrc`, `.htpasswd`, `.git-credentials`, `.dockercfg`.
+
+Files are also skipped if they're binary (null byte in the first 512 bytes) or larger than 5MB.
 
 ## Test-file placeholder suppression
 

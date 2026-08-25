@@ -21,6 +21,7 @@ nav:
           - Secret: guide/scanner/secret.md
           - Misconfiguration: guide/scanner/misconfiguration.md
           - SAST: guide/scanner/sast.md
+          - Code Quality: guide/scanner/quality.md
       - SBOM: guide/sbom.md
       - Configuration: guide/configuration.md
   - Reference:

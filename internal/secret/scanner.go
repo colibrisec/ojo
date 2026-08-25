@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/colibrisec/ojo/internal/model"
@@ -14,6 +15,30 @@ import (
 
 const maxFileSize = 5 << 20
 
+// configExts are file extensions commonly used for configuration, where
+// hardcoded secrets are the expected failure mode. Scanning is limited to
+// these (plus configNames below) instead of every source file, to keep
+// noise/runtime down on large repos.
+// ponytail: extension allowlist, add entries if a common config format is missing rather than reworking the approach.
+var configExts = map[string]bool{
+	".env": true, ".yaml": true, ".yml": true, ".json": true, ".toml": true,
+	".ini": true, ".cfg": true, ".conf": true, ".properties": true, ".xml": true,
+	".pem": true, ".key": true, ".md": true,
+}
+
+var configNames = map[string]bool{
+	"dockerfile": true, ".npmrc": true, ".pypirc": true, ".netrc": true,
+	".htpasswd": true, ".git-credentials": true, ".dockercfg": true,
+}
+
+func isConfigFile(path string) bool {
+	base := strings.ToLower(filepath.Base(path))
+	if configNames[base] || strings.HasPrefix(base, ".env") {
+		return true
+	}
+	return configExts[filepath.Ext(base)]
+}
+
 func Scan(root string) ([]model.Issue, error) {
 	rules, err := DefaultRules()
 	if err != nil {
@@ -21,6 +46,9 @@ func Scan(root string) ([]model.Issue, error) {
 	}
 	var issues []model.Issue
 	err = walk.Walk(root, func(path string, d fs.DirEntry) error {
+		if !isConfigFile(path) {
+			return nil
+		}
 		info, err := os.Stat(path)
 		if err != nil || info.Size() > maxFileSize {
 			return nil
