@@ -2,14 +2,19 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/colibrisec/ojo/internal/config"
+	"github.com/colibrisec/ojo/internal/customrules"
 	"github.com/colibrisec/ojo/internal/manifest"
 	"github.com/colibrisec/ojo/internal/misconfig"
 	"github.com/colibrisec/ojo/internal/osv"
+	"github.com/colibrisec/ojo/internal/quality"
 	"github.com/colibrisec/ojo/internal/report"
 	"github.com/colibrisec/ojo/internal/sast"
 	"github.com/colibrisec/ojo/internal/secret"
@@ -18,6 +23,9 @@ import (
 func fsCmd() *cobra.Command {
 	var format string
 	var scanners string
+	var configPath string
+	var gitlab bool
+	var rulesDir string
 
 	cmd := &cobra.Command{
 		Use:   "fs [path]",
@@ -29,12 +37,38 @@ func fsCmd() *cobra.Command {
 				root = args[0]
 			}
 
+			cfg, err := config.Load(configPath)
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
+			if cfg.Format != "" && !cmd.Flags().Changed("format") {
+				format = cfg.Format
+			}
+			if cfg.Scanners != "" && !cmd.Flags().Changed("scanners") {
+				scanners = cfg.Scanners
+			}
+
 			if format == "sbom" {
 				pkgs, err := manifest.Discover(root)
 				if err != nil {
 					return fmt.Errorf("discovering manifests: %w", err)
 				}
 				return report.SBOM(cmd.OutOrStdout(), pkgs)
+			}
+
+			if gitlab {
+				scanners = "vuln,secret,misconfig,sast"
+			}
+
+			rulesDirPath := rulesDir
+			if rulesDirPath == "" {
+				rulesDirPath = filepath.Join(root, ".ojo", "rules")
+			} else if _, err := os.Stat(rulesDirPath); err != nil {
+				return fmt.Errorf("loading custom rules: %w", err)
+			}
+			customRules, err := customrules.Load(rulesDirPath)
+			if err != nil {
+				return fmt.Errorf("loading custom rules: %w", err)
 			}
 
 			rep := report.Report{Target: root}
@@ -68,24 +102,63 @@ func fsCmd() *cobra.Command {
 						return fmt.Errorf("running sast: %w", err)
 					}
 					rep.Issues = append(rep.Issues, issues...)
+					customIssues, err := customrules.Scan(root, customRules)
+					if err != nil {
+						return fmt.Errorf("running custom rules: %w", err)
+					}
+					rep.Issues = append(rep.Issues, customIssues...)
+				case "quality":
+					issues, err := quality.Scan(root)
+					if err != nil {
+						return fmt.Errorf("running quality: %w", err)
+					}
+					rep.Issues = append(rep.Issues, issues...)
 				case "":
 					// no-op, allows trailing commas
 				default:
-					return fmt.Errorf("unknown scanner %q (available: vuln, secret, misconfig, sast)", s)
+					return fmt.Errorf("unknown scanner %q (available: vuln, secret, misconfig, sast, quality)", s)
 				}
 			}
 
-			switch format {
-			case "json":
-				if err := rep.JSON(cmd.OutOrStdout()); err != nil {
-					return err
+			if gitlab {
+				pkgs, err := manifest.Discover(root)
+				if err != nil {
+					return fmt.Errorf("discovering manifests: %w", err)
 				}
-			case "sarif":
-				if err := rep.SARIF(cmd.OutOrStdout(), root); err != nil {
-					return err
+				files := []struct {
+					name  string
+					write func(io.Writer) error
+				}{
+					{"gl-dependency-scanning-report.json", func(w io.Writer) error { return rep.GitLabDependencyScanning(w, root, Version) }},
+					{"gl-sast-report.json", func(w io.Writer) error { return rep.GitLabSAST(w, root, Version) }},
+					{"gl-secret-detection-report.json", func(w io.Writer) error { return rep.GitLabSecretDetection(w, root, Version) }},
+					{"gl-sbom-report.cdx.json", func(w io.Writer) error { return report.SBOM(w, pkgs) }},
 				}
-			default:
-				rep.Table(cmd.OutOrStdout(), root)
+				for _, f := range files {
+					out, err := os.Create(f.name)
+					if err != nil {
+						return fmt.Errorf("writing %s: %w", f.name, err)
+					}
+					err = f.write(out)
+					out.Close()
+					if err != nil {
+						return fmt.Errorf("writing %s: %w", f.name, err)
+					}
+					fmt.Fprintln(cmd.OutOrStdout(), "wrote", f.name)
+				}
+			} else {
+				switch format {
+				case "json":
+					if err := rep.JSON(cmd.OutOrStdout()); err != nil {
+						return err
+					}
+				case "sarif":
+					if err := rep.SARIF(cmd.OutOrStdout(), root); err != nil {
+						return err
+					}
+				default:
+					rep.Table(cmd.OutOrStdout(), root)
+				}
 			}
 
 			if len(rep.Findings) > 0 || len(rep.Issues) > 0 {
@@ -96,6 +169,9 @@ func fsCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, sbom, sarif")
-	cmd.Flags().StringVar(&scanners, "scanners", "vuln", "comma-separated scanners to run: vuln, secret, misconfig, sast")
+	cmd.Flags().StringVar(&scanners, "scanners", "vuln", "comma-separated scanners to run: vuln, secret, misconfig, sast, quality")
+	cmd.Flags().StringVar(&configPath, "config", "", "path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)")
+	cmd.Flags().BoolVarP(&gitlab, "gitlab", "g", false, "write GitLab-compatible security reports (gl-dependency-scanning-report.json, gl-sast-report.json, gl-secret-detection-report.json, gl-sbom-report.cdx.json) instead of -f/--format output; runs all scanners")
+	cmd.Flags().StringVar(&rulesDir, "rules-dir", "", "directory of custom *.yaml SAST rules (default: <path>/.ojo/rules, if present); runs alongside --scanners sast")
 	return cmd
 }

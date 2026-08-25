@@ -36,6 +36,16 @@ var rubyRules = []rubyRule{
 	{"ruby-tls-verify-disabled", "HIGH", checkRubyTLSVerifyDisabled},
 	{"ruby-mass-assignment", "MEDIUM", checkRubyMassAssignment},
 	{"ruby-open-redirect", "MEDIUM", checkRubyOpenRedirect},
+	{"ruby-jwt-none-algorithm", "HIGH", checkRubyJWTNoneAlgorithm},
+	{"ruby-cors-wildcard", "MEDIUM", checkRubyCORSWildcard},
+	{"ruby-insecure-cookie", "MEDIUM", checkRubyInsecureCookie},
+	{"ruby-path-traversal", "HIGH", checkRubyPathTraversal},
+	{"ruby-cookie-missing-flags", "LOW", checkRubyCookieMissingFlags},
+	{"ruby-ssrf", "HIGH", checkRubySSRF},
+	{"ruby-xxe", "HIGH", checkRubyXXE},
+	{"ruby-ssti", "HIGH", checkRubySSTI},
+	{"ruby-unsafe-reflection", "HIGH", checkRubyUnsafeReflection},
+	{"ruby-predictable-prng-seed", "MEDIUM", checkRubyPredictablePRNGSeed},
 }
 
 func rubyIssueAt(id, severity, path, title, message string, n *gts.Node) model.Issue {
@@ -92,6 +102,16 @@ func checkRubyHardcodedSecret(root *gts.Node, src []byte, path string) []model.I
 
 var rubyEvalQuery = mustRubyQuery(`(call method: (identifier) @m (#eq? @m "eval")) @call`)
 
+// rubyMetaEvalStringQuery matches instance_eval/class_eval/module_eval only
+// in their string-argument form (`obj.class_eval("...")`), which executes
+// the string as Ruby code — not their much more common block form
+// (`klass.class_eval do ... end`), which is ordinary, safe metaprogramming
+// used throughout idiomatic Ruby (Rails, RSpec, DSLs). Verified directly:
+// the block form parses with a `block` field and no `arguments` field at
+// all, while the string form has `arguments` and no `block` — requiring
+// `arguments:` here is what keeps the block form out, not a name check.
+var rubyMetaEvalStringQuery = mustRubyQuery(`(call method: (identifier) @m arguments: (argument_list . (_) @arg) (#any-of? @m "instance_eval" "class_eval" "module_eval")) @call`)
+
 func checkRubyEvalDetected(root *gts.Node, src []byte, path string) []model.Issue {
 	var issues []model.Issue
 	for _, m := range rubyEvalQuery.ExecuteNode(root, rubyLang, src) {
@@ -99,11 +119,18 @@ func checkRubyEvalDetected(root *gts.Node, src []byte, path string) []model.Issu
 			"eval() used", "eval() executes arbitrary code; avoid it on any input that isn't fully trusted",
 			rubyCapMap(m)["call"]))
 	}
+	for _, m := range rubyMetaEvalStringQuery.ExecuteNode(root, rubyLang, src) {
+		caps := rubyCapMap(m)
+		issues = append(issues, rubyIssueAt("ruby-eval-detected", "HIGH", path,
+			string(caps["m"].Text(src))+"() used with a string argument",
+			string(caps["m"].Text(src))+"(string) executes the string as Ruby code, just like eval(); avoid it on any input that isn't fully trusted (the block form, "+string(caps["m"].Text(src))+" do ... end, is unaffected — this only matches the string-argument call)",
+			caps["call"]))
+	}
 	return issues
 }
 
 var (
-	rubyCommandCallQuery = mustRubyQuery(`(call method: (identifier) @m arguments: (argument_list . (_) @arg) (#any-of? @m "system" "exec" "spawn")) @call`)
+	rubyCommandCallQuery = mustRubyQuery(`(call method: (identifier) @m arguments: (argument_list . (_) @arg) (#any-of? @m "system" "exec" "spawn" "popen")) @call`)
 	rubySubshellQuery    = mustRubyQuery(`(subshell (interpolation) @interp) @sub`)
 )
 
@@ -111,12 +138,12 @@ func checkRubyCommandInjection(root *gts.Node, src []byte, path string) []model.
 	var issues []model.Issue
 	for _, m := range rubyCommandCallQuery.ExecuteNode(root, rubyLang, src) {
 		caps := rubyCapMap(m)
-		if !rubyIsDynamicString(caps["arg"], src) {
+		if !rubyIsDynamicString(caps["arg"], src) && !rubyTaintedArg(caps["arg"], src) {
 			continue
 		}
 		issues = append(issues, rubyIssueAt("ruby-command-injection", "HIGH", path,
 			"Command built from a non-literal argument",
-			string(caps["m"].Text(src))+"(...) argument is built via string interpolation or `+` concatenation instead of a literal",
+			string(caps["m"].Text(src))+"(...) argument is built via string interpolation or `+` concatenation instead of a literal, or is a local variable derived from params/env input",
 			caps["call"]))
 	}
 	for _, m := range rubySubshellQuery.ExecuteNode(root, rubyLang, src) {
@@ -133,12 +160,12 @@ func checkRubySQLInjection(root *gts.Node, src []byte, path string) []model.Issu
 	var issues []model.Issue
 	for _, m := range rubySQLCallQuery.ExecuteNode(root, rubyLang, src) {
 		caps := rubyCapMap(m)
-		if !rubyIsDynamicString(caps["arg"], src) {
+		if !rubyIsDynamicString(caps["arg"], src) && !rubyTaintedArg(caps["arg"], src) {
 			continue
 		}
 		issues = append(issues, rubyIssueAt("ruby-sql-injection", "HIGH", path,
 			"SQL query built from a non-literal string",
-			string(caps["m"].Text(src))+"(...) query argument is built via string interpolation or concatenation instead of a bound parameter",
+			string(caps["m"].Text(src))+"(...) query argument is built via string interpolation or concatenation instead of a bound parameter, or is a local variable derived from params/env input",
 			caps["call"]))
 	}
 	return issues
@@ -232,14 +259,91 @@ func checkRubyOpenRedirect(root *gts.Node, src []byte, path string) []model.Issu
 	for _, m := range rubyRedirectToQuery.ExecuteNode(root, rubyLang, src) {
 		caps := rubyCapMap(m)
 		arg := caps["arg"]
-		if !rubyIsDynamicString(arg, src) && !rubyRootedAtParams(arg, src) {
+		if !rubyIsDynamicString(arg, src) && !rubyTaintedArg(arg, src) {
 			continue
 		}
 		issues = append(issues, rubyIssueAt("ruby-open-redirect", "MEDIUM", path,
-			"Redirect target built from request data", "redirect_to(...) argument is derived from params/request input rather than a literal/allowlisted URL",
+			"Redirect target built from request data", "redirect_to(...) argument is derived from params/request input (directly, or through a local variable) rather than a literal/allowlisted URL",
 			caps["call"]))
 	}
 	return issues
+}
+
+var rubyFuncBoundary = map[string]bool{"method": true, "singleton_method": true, "lambda": true, "block": true}
+
+func rubyAssignInfo(n *gts.Node, lang *gts.Language, src []byte) (string, *gts.Node, bool) {
+	switch n.Type(rubyLang) {
+	case "assignment", "operator_assignment":
+		left := n.ChildByFieldName("left", rubyLang)
+		right := n.ChildByFieldName("right", rubyLang)
+		if left == nil || right == nil || left.Type(rubyLang) != "identifier" {
+			return "", nil, false
+		}
+		return string(left.Text(src)), right, true
+	default:
+		return "", nil, false
+	}
+}
+
+// rubyIsEnvSource matches ENV[...]/ENV.fetch(...) by raw text.
+func rubyIsEnvSource(n *gts.Node, src []byte) bool {
+	text := string(n.Text(src))
+	return strings.HasPrefix(text, "ENV[") || strings.HasPrefix(text, "ENV.fetch(")
+}
+
+// rubyExprTainted reports whether n evaluates from tainted input: rooted
+// at params/request (rubyRootedAtParams), an env-var read, a variable
+// already known-tainted in env, or built from any of those via `+`
+// concatenation, string interpolation, or a call's arguments.
+func rubyExprTainted(n *gts.Node, lang *gts.Language, src []byte, env map[string]bool) bool {
+	if n == nil {
+		return false
+	}
+	if rubyRootedAtParams(n, src) || rubyIsEnvSource(n, src) {
+		return true
+	}
+	switch n.Type(rubyLang) {
+	case "identifier":
+		return env[string(n.Text(src))]
+	case "binary":
+		op := n.ChildByFieldName("operator", rubyLang)
+		if op == nil || string(op.Text(src)) != "+" {
+			return false
+		}
+		return rubyExprTainted(n.ChildByFieldName("left", rubyLang), lang, src, env) || rubyExprTainted(n.ChildByFieldName("right", rubyLang), lang, src, env)
+	case "string":
+		for _, c := range n.Children() {
+			if c.Type(rubyLang) != "interpolation" || c.NamedChildCount() == 0 {
+				continue
+			}
+			if rubyExprTainted(c.NamedChild(0), lang, src, env) {
+				return true
+			}
+		}
+		return false
+	case "call":
+		args := n.ChildByFieldName("arguments", rubyLang)
+		if args == nil {
+			return false
+		}
+		for _, a := range args.Children() {
+			if rubyExprTainted(a, lang, src, env) {
+				return true
+			}
+		}
+		return false
+	default:
+		return false
+	}
+}
+
+// rubyTaintedArg reports whether arg evaluates from tainted input, tracking
+// through local variable assignments within its enclosing method/lambda/
+// block (intraprocedural taint tracking — see taint_ts.go).
+func rubyTaintedArg(arg *gts.Node, src []byte) bool {
+	body := tsEnclosingBody(arg, rubyLang, rubyFuncBoundary)
+	env := tsTaintEnv(body, rubyLang, src, rubyFuncBoundary, rubyAssignInfo, rubyExprTainted)
+	return rubyExprTainted(arg, rubyLang, src, env)
 }
 
 func rubyRootedAtParams(n *gts.Node, src []byte) bool {
@@ -264,6 +368,239 @@ func rubyRootedAtParams(n *gts.Node, src []byte) bool {
 			return false
 		}
 	}
+}
+
+var (
+	rubyJWTPairQuery   = mustRubyQuery(`(pair key: (hash_key_symbol) @key value: (string) @val) @pair`)
+	rubyJWTEncodeQuery = mustRubyQuery(`(call receiver: (constant) @recv method: (identifier) @meth arguments: (argument_list (_) (_) (string) @alg) (#eq? @recv "JWT") (#eq? @meth "encode")) @call`)
+)
+
+func checkRubyJWTNoneAlgorithm(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range rubyJWTPairQuery.ExecuteNode(root, rubyLang, src) {
+		caps := rubyCapMap(m)
+		if string(caps["key"].Text(src)) != "alg" || trimRubyQuotes(string(caps["val"].Text(src))) != "none" {
+			continue
+		}
+		issues = append(issues, rubyIssueAt("ruby-jwt-none-algorithm", "HIGH", path,
+			"JWT algorithm set to 'none'", "alg: 'none' accepts unsigned tokens, allowing signature bypass",
+			caps["pair"]))
+	}
+	for _, m := range rubyJWTEncodeQuery.ExecuteNode(root, rubyLang, src) {
+		caps := rubyCapMap(m)
+		if trimRubyQuotes(string(caps["alg"].Text(src))) != "none" {
+			continue
+		}
+		issues = append(issues, rubyIssueAt("ruby-jwt-none-algorithm", "HIGH", path,
+			"JWT algorithm set to 'none'", "JWT.encode(..., 'none') accepts unsigned tokens, allowing signature bypass",
+			caps["call"]))
+	}
+	return issues
+}
+
+var rubyHeaderAssignQuery = mustRubyQuery(`(assignment left: (element_reference object: (_) @recv (string) @key) right: (string) @val) @assign`)
+
+func checkRubyCORSWildcard(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range rubyHeaderAssignQuery.ExecuteNode(root, rubyLang, src) {
+		caps := rubyCapMap(m)
+		if !strings.Contains(strings.ToLower(string(caps["recv"].Text(src))), "headers") {
+			continue
+		}
+		key := trimRubyQuotes(string(caps["key"].Text(src)))
+		val := trimRubyQuotes(string(caps["val"].Text(src)))
+		if !strings.EqualFold(key, "Access-Control-Allow-Origin") || val != "*" {
+			continue
+		}
+		issues = append(issues, rubyIssueAt("ruby-cors-wildcard", "MEDIUM", path,
+			"CORS allow-origin set to wildcard", "headers['Access-Control-Allow-Origin'] = '*' allows any origin to make credentialed cross-origin requests",
+			caps["assign"]))
+	}
+	return issues
+}
+
+var rubyCookieBoolPairQuery = mustRubyQuery(`(pair key: (hash_key_symbol) @key value: (false)) @pair`)
+
+func checkRubyInsecureCookie(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range rubyCookieBoolPairQuery.ExecuteNode(root, rubyLang, src) {
+		caps := rubyCapMap(m)
+		key := strings.ToLower(string(caps["key"].Text(src)))
+		if key != "secure" && key != "httponly" {
+			continue
+		}
+		issues = append(issues, rubyIssueAt("ruby-insecure-cookie", "MEDIUM", path,
+			"Cookie flag explicitly disabled", key+": false weakens cookie protection",
+			caps["pair"]))
+	}
+	return issues
+}
+
+var rubyFileOpenQuery = mustRubyQuery(`(call receiver: (constant) @recv method: (identifier) @meth arguments: (argument_list . (_) @arg) (#eq? @recv "File") (#any-of? @meth "open" "read")) @call`)
+
+func checkRubyPathTraversal(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range rubyFileOpenQuery.ExecuteNode(root, rubyLang, src) {
+		caps := rubyCapMap(m)
+		arg := caps["arg"]
+		if !rubyIsDynamicString(arg, src) && !rubyTaintedArg(arg, src) {
+			continue
+		}
+		issues = append(issues, rubyIssueAt("ruby-path-traversal", "HIGH", path,
+			"File path built from request data", "File."+string(caps["meth"].Text(src))+"(...) path is derived from params/request input (directly, or through a local variable) or built via interpolation/concatenation rather than a validated literal; sanitize/allowlist before use",
+			caps["call"]))
+	}
+	return issues
+}
+
+var (
+	rubyNetHTTPGetQuery = mustRubyQuery(`(call receiver: (scope_resolution scope: (constant) @mod name: (constant) @cls) method: (identifier) @meth arguments: (argument_list . (_) @arg) (#eq? @mod "Net") (#eq? @cls "HTTP") (#eq? @meth "get")) @call`)
+	rubyURIOpenQuery    = mustRubyQuery(`(call receiver: (constant) @mod method: (identifier) @meth arguments: (argument_list . (_) @arg) (#eq? @mod "URI") (#eq? @meth "open")) @call`)
+)
+
+func checkRubySSRF(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range rubyNetHTTPGetQuery.ExecuteNode(root, rubyLang, src) {
+		caps := rubyCapMap(m)
+		arg := caps["arg"]
+		if !rubyIsDynamicString(arg, src) && !rubyTaintedArg(arg, src) {
+			continue
+		}
+		issues = append(issues, rubyIssueAt("ruby-ssrf", "HIGH", path,
+			"Outbound request URL built from request data",
+			"Net::HTTP.get(...) URL argument is derived from params/env input (directly, or through a local variable) or built via interpolation/concatenation rather than a validated/allowlisted URL",
+			caps["call"]))
+	}
+	for _, m := range rubyURIOpenQuery.ExecuteNode(root, rubyLang, src) {
+		caps := rubyCapMap(m)
+		arg := caps["arg"]
+		if !rubyIsDynamicString(arg, src) && !rubyTaintedArg(arg, src) {
+			continue
+		}
+		issues = append(issues, rubyIssueAt("ruby-ssrf", "HIGH", path,
+			"Outbound request URL built from request data",
+			"URI.open(...) URL argument is derived from params/env input (directly, or through a local variable) or built via interpolation/concatenation rather than a validated/allowlisted URL",
+			caps["call"]))
+	}
+	return issues
+}
+
+var (
+	rubyNoentConstQuery = mustRubyQuery(`(scope_resolution name: (constant) @c (#eq? @c "NOENT")) @ref`)
+	rubyNoentCallQuery  = mustRubyQuery(`(call method: (identifier) @m (#eq? @m "noent")) @call`)
+)
+
+func checkRubyXXE(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range rubyNoentConstQuery.ExecuteNode(root, rubyLang, src) {
+		issues = append(issues, rubyIssueAt("ruby-xxe", "HIGH", path,
+			"XML entity substitution enabled", "Nokogiri::XML::ParseOptions::NOENT enables entity substitution, allowing XXE when parsing untrusted XML",
+			rubyCapMap(m)["ref"]))
+	}
+	for _, m := range rubyNoentCallQuery.ExecuteNode(root, rubyLang, src) {
+		issues = append(issues, rubyIssueAt("ruby-xxe", "HIGH", path,
+			"XML entity substitution enabled", "config.noent enables entity substitution in a Nokogiri parse-options block, allowing XXE when parsing untrusted XML",
+			rubyCapMap(m)["call"]))
+	}
+	return issues
+}
+
+var rubyERBNewQuery = mustRubyQuery(`(call receiver: (constant) @mod method: (identifier) @meth arguments: (argument_list . (_) @arg) (#eq? @mod "ERB") (#eq? @meth "new")) @call`)
+
+func checkRubySSTI(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range rubyERBNewQuery.ExecuteNode(root, rubyLang, src) {
+		caps := rubyCapMap(m)
+		arg := caps["arg"]
+		if !rubyIsDynamicString(arg, src) && !rubyTaintedArg(arg, src) {
+			continue
+		}
+		issues = append(issues, rubyIssueAt("ruby-ssti", "HIGH", path,
+			"Template source built from request data",
+			"ERB.new(...) argument is derived from params/env input (directly, or through a local variable) or built via interpolation/concatenation — the template source itself is attacker-controlled, which is server-side template injection, not just a data-substitution issue",
+			caps["call"]))
+	}
+	return issues
+}
+
+var rubySendQuery = mustRubyQuery(`(call method: (identifier) @m arguments: (argument_list . (_) @arg) (#any-of? @m "send" "public_send" "__send__")) @call`)
+
+// checkRubyUnsafeReflection flags .send/.public_send/.__send__ when the
+// method-name argument is itself tainted (request/env-derived, directly or
+// through a local variable) — arbitrary method invocation, a well-known
+// Ruby/Rails RCE-adjacent gadget class. Not gated on rubyIsDynamicString:
+// the overwhelmingly common, safe usage is a literal symbol
+// (`obj.send(:foo)`), which never matches either dynamic-string or taint
+// shape, so only the taint check is needed and it stays quiet on that idiom.
+func checkRubyUnsafeReflection(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range rubySendQuery.ExecuteNode(root, rubyLang, src) {
+		caps := rubyCapMap(m)
+		arg := caps["arg"]
+		if !rubyTaintedArg(arg, src) {
+			continue
+		}
+		issues = append(issues, rubyIssueAt("ruby-unsafe-reflection", "HIGH", path,
+			"Method invoked by an attacker-controlled name",
+			string(caps["m"].Text(src))+"(...) method-name argument is derived from params/env input (directly, or through a local variable) — this calls whatever method name an attacker supplies, letting them invoke methods the application never intended to expose",
+			caps["call"]))
+	}
+	return issues
+}
+
+var rubySrandQuery = mustRubyQuery(`(call method: (identifier) @m arguments: (argument_list . (integer)) (#eq? @m "srand")) @call`)
+
+// checkRubyPredictablePRNGSeed flags srand(<literal>) — a fixed seed makes
+// every subsequent Kernel#rand value fully predictable (distinct from
+// ruby-insecure-random-for-secrets, which flags the module choice, not the
+// seed). srand() with no args is unaffected.
+func checkRubyPredictablePRNGSeed(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range rubySrandQuery.ExecuteNode(root, rubyLang, src) {
+		issues = append(issues, rubyIssueAt("ruby-predictable-prng-seed", "MEDIUM", path,
+			"PRNG seeded with a hardcoded literal",
+			"srand(...) is called with a compile-time integer literal; every run produces the same sequence, making all subsequent output predictable",
+			rubyCapMap(m)["call"]))
+	}
+	return issues
+}
+
+var rubyCookieAssignQuery = mustRubyQuery(`(assignment left: (element_reference object: (_) @recv) right: (_) @val) @assign`)
+
+func checkRubyCookieMissingFlags(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range rubyCookieAssignQuery.ExecuteNode(root, rubyLang, src) {
+		caps := rubyCapMap(m)
+		if !strings.Contains(strings.ToLower(string(caps["recv"].Text(src))), "cookies") {
+			continue
+		}
+		val := caps["val"]
+		if val.Type(rubyLang) != "hash" {
+			issues = append(issues, rubyIssueAt("ruby-cookie-missing-flags", "LOW", path,
+				"Cookie set without secure/httponly options", "cookies[...] = ... assigns a plain value instead of a hash with secure/httponly options; both default to false, weakening cookie protection",
+				caps["assign"]))
+			continue
+		}
+		has := map[string]bool{}
+		for _, c := range val.Children() {
+			if c.Type(rubyLang) != "pair" {
+				continue
+			}
+			key := c.ChildByFieldName("key", rubyLang)
+			if key != nil {
+				has[strings.ToLower(string(key.Text(src)))] = true
+			}
+		}
+		for _, flag := range []string{"secure", "httponly"} {
+			if has[flag] {
+				continue
+			}
+			issues = append(issues, rubyIssueAt("ruby-cookie-missing-flags", "LOW", path,
+				flag+" not set on cookie options", "cookies[...] = {...} doesn't set "+flag+"; it defaults to false, weakening cookie protection unless set elsewhere",
+				val))
+		}
+	}
+	return issues
 }
 
 func rubyCapMap(m gts.QueryMatch) map[string]*gts.Node {

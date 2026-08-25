@@ -40,6 +40,15 @@ var rules = []rule{
 	{"go-discarded-auth-error", "HIGH", checkDiscardedAuthError},
 	{"go-tls-insecure-skip-verify", "HIGH", checkTLSInsecureSkipVerify},
 	{"go-permissive-file-mode", "MEDIUM", checkPermissiveFileMode},
+	{"go-open-redirect", "MEDIUM", checkOpenRedirect},
+	{"go-jwt-none-algorithm", "HIGH", checkJWTNoneAlgorithm},
+	{"go-cors-wildcard", "MEDIUM", checkCORSWildcard},
+	{"go-insecure-cookie", "MEDIUM", checkInsecureCookie},
+	{"go-path-traversal", "HIGH", checkPathTraversal},
+	{"go-cookie-missing-flags", "LOW", checkCookieMissingFlags},
+	{"go-ssrf", "HIGH", checkSSRF},
+	{"go-ssti", "HIGH", checkSSTI},
+	{"go-predictable-prng-seed", "MEDIUM", checkPredictablePRNGSeed},
 }
 
 // Scan walks root, parses every .go file, and runs the rule set against each.

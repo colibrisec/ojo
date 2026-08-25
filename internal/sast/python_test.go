@@ -114,3 +114,112 @@ func TestPythonSQLInjectionViaDotFormat(t *testing.T) {
 	}
 	t.Errorf("expected py-sql-injection to fire for .format(...) query, got: %+v", issues)
 }
+
+const pyNewRules = `from flask import Flask, request, redirect
+import jwt
+
+app = Flask(__name__)
+
+@app.route("/go")
+def go():
+    return redirect(request.args.get("next"))
+
+@app.route("/safe")
+def safe():
+    return redirect("/home")
+
+def check(token):
+    return jwt.decode(token, "key", verify=False)
+
+def set_cors(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Content-Type'] = 'application/json'
+    return response
+`
+
+func TestPythonScanFindsNewRules(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "app2.py"), []byte(pyNewRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	counts := map[string]int{}
+	for _, i := range issues {
+		counts[i.RuleID]++
+	}
+	if counts["py-open-redirect"] != 1 {
+		t.Errorf("expected 1 py-open-redirect issue, got %d: %+v", counts["py-open-redirect"], issues)
+	}
+	if counts["py-jwt-verify-disabled"] != 1 {
+		t.Errorf("expected 1 py-jwt-verify-disabled issue, got %d: %+v", counts["py-jwt-verify-disabled"], issues)
+	}
+	if counts["py-cors-wildcard"] != 1 {
+		t.Errorf("expected 1 py-cors-wildcard issue, got %d: %+v", counts["py-cors-wildcard"], issues)
+	}
+}
+
+const pyCookieAndPathRules = `def set_cookie(response, token):
+    response.set_cookie("session", token, secure=False, httponly=False)
+    response.set_cookie("theme", "dark", secure=True)
+
+def read(request):
+    return open(request.args.get("path"))
+
+def read_safe():
+    return open("/safe/path")
+`
+
+func TestPythonScanFindsCookieAndPathTraversal(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "app3.py"), []byte(pyCookieAndPathRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	counts := map[string]int{}
+	for _, i := range issues {
+		counts[i.RuleID]++
+	}
+	if counts["py-insecure-cookie"] != 2 {
+		t.Errorf("expected 2 py-insecure-cookie issues (secure + httponly), got %d: %+v", counts["py-insecure-cookie"], issues)
+	}
+	if counts["py-path-traversal"] != 1 {
+		t.Errorf("expected 1 py-path-traversal issue, got %d: %+v", counts["py-path-traversal"], issues)
+	}
+}
+
+const pyCookieMissingFlagsRules = `def go(response, token):
+    response.set_cookie("session", token)
+    response.set_cookie("theme", "dark", secure=True, httponly=True)
+`
+
+func TestPythonScanFindsCookieMissingFlags(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "app4.py"), []byte(pyCookieMissingFlagsRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count := 0
+	for _, i := range issues {
+		if i.RuleID == "py-cookie-missing-flags" {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Errorf("expected 2 py-cookie-missing-flags issues (secure + httponly missing on the first call only), got %d: %+v", count, issues)
+	}
+}
