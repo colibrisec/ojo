@@ -13,7 +13,7 @@ $ ojo image python:3.14-slim  # OS package vulnerabilities in a container image
 ## Installation
 
 ```console
-$ brew tap colibrisec/tap && brew install ojo        # macOS
+$ brew install ojo                                     # macOS
 $ sudo apt install ./ojo_X.Y.Z_linux_amd64.deb        # Debian/Ubuntu
 $ sudo dnf install ojo_X.Y.Z_linux_amd64.rpm           # Fedora/RHEL
 $ sudo snap install ojo-scanner                        # Linux (Snap; command is ojo-scanner)
