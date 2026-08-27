@@ -22,7 +22,6 @@ Each release also publishes native packages, built from the same binaries above:
 === "macOS (Homebrew)"
 
     ```console
-    $ brew tap colibrisec/tap
     $ brew install ojo
     ```
 
