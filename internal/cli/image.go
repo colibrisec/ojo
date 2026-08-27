@@ -3,10 +3,12 @@ package cli
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/colibrisec/ojo/internal/config"
+	"github.com/colibrisec/ojo/internal/ignore"
 	"github.com/colibrisec/ojo/internal/image"
 	"github.com/colibrisec/ojo/internal/osv"
 	"github.com/colibrisec/ojo/internal/report"
@@ -15,6 +17,7 @@ import (
 func imageCmd() *cobra.Command {
 	var format string
 	var configPath string
+	var ignoreFile string
 
 	cmd := &cobra.Command{
 		Use:   "image [ref]",
@@ -48,7 +51,14 @@ func imageCmd() *cobra.Command {
 				return fmt.Errorf("querying OSV: %w", err)
 			}
 
-			rep := report.Report{Target: fmt.Sprintf("%s (%s)", ref, osLabel), Findings: findings}
+			ignoreRules, err := ignore.Load(ignoreFile)
+			if err != nil {
+				return fmt.Errorf("loading ignore file: %w", err)
+			}
+			kept, suppressed, _, _ := ignore.Apply(findings, nil, ignoreRules, "", time.Now())
+			findings = kept
+
+			rep := report.Report{Target: fmt.Sprintf("%s (%s)", ref, osLabel), Findings: findings, SuppressedFindings: suppressed}
 			switch format {
 			case "json":
 				if err := rep.JSON(cmd.OutOrStdout()); err != nil {
@@ -71,5 +81,6 @@ func imageCmd() *cobra.Command {
 
 	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, sbom, sarif")
 	cmd.Flags().StringVar(&configPath, "config", "", "path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)")
+	cmd.Flags().StringVar(&ignoreFile, "ignore-file", "", "path to a .ojoignore file (default: .ojoignore in the current directory, if present)")
 	return cmd
 }

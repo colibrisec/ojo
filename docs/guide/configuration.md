@@ -26,6 +26,31 @@ $ ojo fs --config ci/.ojo.yaml .
 
 A missing default `.ojo.yaml` is not an error — it just means no overrides. An explicit `--config path` that doesn't exist *is* an error (almost certainly a typo), and so is an unrecognized key in the file.
 
+## Risk acceptance (`.ojoignore`)
+
+Drop a `.ojoignore` in the directory you run ojo from to suppress specific findings/issues — accepted risk, false positives, whatever the reason — without editing scanner code:
+
+```
+# <id> <path-glob>  # reason (expires: YYYY-MM-DD)
+CVE-2022-28346  requirements.txt              # accepted risk, reviewed by security (expires: 2026-12-31)
+go-sql-injection  internal/legacy/*.go        # false positive, parameterized via a wrapper
+```
+
+- **`id`** matches a vulnerability's ID or any alias (so a `GHSA-...`/`PYSEC-...` alias works too), or an Issue's rule ID (`go-sql-injection`, `aws-access-key-id`, etc.) — exactly.
+- **`path-glob`** is matched against the finding/issue's path relative to the scan root (`*` spans one path segment, doesn't cross `/`).
+- **`# reason`** is required — an entry with no reason is a load error, same policy as an unrecognized `.ojo.yaml` key.
+- **`(expires: YYYY-MM-DD)`** at the end of the reason is optional. Past that date the entry just stops suppressing (the finding reappears) rather than erroring the scan.
+
+ojo looks for `.ojoignore` in the current directory by default. Point it elsewhere with `--ignore-file`:
+
+```console
+$ ojo fs --ignore-file ci/.ojoignore .
+```
+
+A missing default `.ojoignore` is not an error. An explicit `--ignore-file path` that doesn't exist, or a malformed line, is.
+
+**Suppressed results are omitted from `table`/`json`/`sbom`/GitLab output entirely** — they don't count toward the exit code either. `-f sarif` is the exception: suppressed results stay in the output as native SARIF `suppressions` (`kind: external`, your reason as `justification`), so tools that understand SARIF suppressions (like GitHub's Security tab) can still show them as accepted rather than hiding the audit trail.
+
 ## `--scanners`
 
 `ojo fs` only. Comma-separated list of scanners to run.

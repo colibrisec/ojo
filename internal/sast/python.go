@@ -50,6 +50,7 @@ var pyRules = []pyRule{
 	{"py-insecure-tempfile", "MEDIUM", checkPyInsecureTempfile},
 	{"py-unsafe-reflection", "HIGH", checkPyUnsafeReflection},
 	{"py-predictable-prng-seed", "MEDIUM", checkPyPredictablePRNGSeed},
+	{"py-agent-unsandboxed-exec", "HIGH", checkPyAgentUnsandboxedExec},
 }
 
 func pyIssueAt(id, severity, path, title, message string, n *gts.Node) model.Issue {
@@ -631,6 +632,66 @@ func checkPyCookieMissingFlags(root *gts.Node, src []byte, path string) []model.
 				flag+" not set on set_cookie", "set_cookie(...) doesn't pass "+flag+"=...; it defaults to False, weakening cookie protection unless set elsewhere",
 				caps["call"]))
 		}
+	}
+	return issues
+}
+
+// pyAgentToolClasses are LangChain/AutoGen/CrewAI-style tools whose .run()
+// executes their argument as code or a shell command with no sandbox --
+// LangChain's own docs call several of these "unsafe" for exactly this
+// reason. Curated by name since there's no import to gate on that would be
+// reliable across langchain/langchain_community/langchain_experimental's
+// churn between releases.
+var pyAgentToolClasses = map[string]bool{
+	"PythonREPLTool": true, "PythonAstREPLTool": true, "ShellTool": true,
+	"BashProcess": true, "CodeInterpreterTool": true, "LocalCommandLineCodeExecutor": true,
+}
+
+// pyIsAgentToolConstructor matches both `PythonREPLTool().run(...)` directly
+// and a variable previously assigned from one of pyAgentToolClasses'
+// constructors -- same env-threading shape as pyExprTainted, just tracking
+// "constructed from a dangerous class" instead of "tainted".
+func pyIsAgentToolConstructor(n *gts.Node, lang *gts.Language, src []byte, env map[string]bool) bool {
+	if n == nil {
+		return false
+	}
+	switch n.Type(pyLang) {
+	case "identifier":
+		return env[string(n.Text(src))]
+	case "call":
+		fn := n.ChildByFieldName("function", pyLang)
+		if fn == nil {
+			return false
+		}
+		if fn.Type(pyLang) == "attribute" {
+			fn = fn.ChildByFieldName("attribute", pyLang)
+		}
+		return pyAgentToolClasses[string(fn.Text(src))]
+	default:
+		return false
+	}
+}
+
+var agentToolRunQuery = mustPyQuery(`(call function: (attribute object: (_) @obj attribute: (identifier) @meth) arguments: (argument_list . (_) @arg) (#any-of? @meth "run" "arun")) @call`)
+
+func checkPyAgentUnsandboxedExec(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range agentToolRunQuery.ExecuteNode(root, pyLang, src) {
+		caps := capMap(m)
+		obj, arg := caps["obj"], caps["arg"]
+
+		body := tsEnclosingBody(obj, pyLang, pyFuncBoundary)
+		toolEnv := tsTaintEnv(body, pyLang, src, pyFuncBoundary, pyAssignInfo, pyIsAgentToolConstructor)
+		if !pyIsAgentToolConstructor(obj, pyLang, src, toolEnv) {
+			continue
+		}
+		if !pyIsDynamicString(arg, src) && !pyTaintedArg(arg, src) {
+			continue
+		}
+		issues = append(issues, pyIssueAt("py-agent-unsandboxed-exec", "HIGH", path,
+			"Agent tool executes untrusted input with no sandbox",
+			string(obj.Text(src))+"."+string(caps["meth"].Text(src))+"(...) runs the argument as code/a shell command; it traces back to request/env input with no sandboxing or allowlist in between",
+			caps["call"]))
 	}
 	return issues
 }
