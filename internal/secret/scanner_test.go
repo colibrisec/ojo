@@ -36,6 +36,26 @@ func TestScan(t *testing.T) {
 	}
 }
 
+func TestScan_KeyLabelDoesNotShadowLaterSecretOnSameLine(t *testing.T) {
+	// A single-line JSON "KEY": "value" pair (an MCP server's env block,
+	// for instance) has the quoted key name itself as an earlier candidate
+	// match for the generic pattern than the real secret value -- the key
+	// name's low entropy must not cause the line to be skipped entirely.
+	dir := t.TempDir()
+	content := `{"env": {"OPENAI_API_KEY": "sk-proj-abcdefghijklmnopqrstuvwxyz1234567890ABCD"}}` + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(issues) != 1 || issues[0].RuleID != "generic-secret-assignment" {
+		t.Errorf("expected the secret value to be flagged despite the key label matching first, got %+v", issues)
+	}
+}
+
 func TestScan_TestFileExclusion(t *testing.T) {
 	t.Run("suppresses placeholder secret in a test config file", func(t *testing.T) {
 		dir := t.TempDir()

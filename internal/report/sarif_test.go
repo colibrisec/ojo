@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/colibrisec/ojo/internal/ignore"
 	"github.com/colibrisec/ojo/internal/model"
 )
 
@@ -150,6 +151,95 @@ func TestSARIFStructureAndLevels(t *testing.T) {
 	}
 	if unknownResult.Locations[0].PhysicalLocation.Region == nil || unknownResult.Locations[0].PhysicalLocation.Region.StartLine != 1 {
 		t.Errorf("expected region with StartLine=1, got %+v", unknownResult.Locations[0].PhysicalLocation.Region)
+	}
+}
+
+func TestSARIFSuppressionsAreNativelyFlaggedNotOmitted(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "repo")
+	manifestPath := filepath.Join(root, "requirements.txt")
+	issueFile := filepath.Join(root, "src", "config.py")
+
+	r := Report{
+		Findings: []model.Finding{
+			{
+				Package: model.Package{Name: "kept-pkg", Source: manifestPath},
+				Vulns:   []model.Vulnerability{{ID: "CVE-KEPT", Severity: "HIGH"}},
+			},
+		},
+		SuppressedFindings: []ignore.SuppressedFinding{
+			{
+				Package: model.Package{Name: "django", Version: "3.2.0", Source: manifestPath},
+				Vuln:    model.Vulnerability{ID: "CVE-2022-28346", Summary: "SQL Injection in Django", Severity: "CRITICAL"},
+				Reason:  "accepted risk, reviewed by security",
+			},
+		},
+		SuppressedIssues: []ignore.SuppressedIssue{
+			{
+				Issue:  model.Issue{RuleID: "go-insecure-random-for-secrets", Title: "insecure random", Severity: "INFO", File: issueFile, Line: 4, Message: "boom"},
+				Reason: "false positive, reviewed",
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := r.SARIF(&buf, root); err != nil {
+		t.Fatal(err)
+	}
+
+	var log struct {
+		Runs []struct {
+			Results []struct {
+				RuleID       string `json:"ruleId"`
+				Suppressions []struct {
+					Kind          string `json:"kind"`
+					Justification string `json:"justification"`
+				} `json:"suppressions"`
+			} `json:"results"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &log); err != nil {
+		t.Fatalf("SARIF output isn't valid JSON: %v\n%s", err, buf.String())
+	}
+
+	results := log.Runs[0].Results
+	if len(results) != 3 { // 1 kept vuln + 1 suppressed vuln + 1 suppressed issue
+		t.Fatalf("expected suppressed results to still appear in SARIF, got %d results", len(results))
+	}
+
+	byRule := map[string]struct {
+		Kind          string
+		Justification string
+		suppressed    bool
+	}{}
+	for _, res := range results {
+		if len(res.Suppressions) > 0 {
+			byRule[res.RuleID] = struct {
+				Kind          string
+				Justification string
+				suppressed    bool
+			}{res.Suppressions[0].Kind, res.Suppressions[0].Justification, true}
+		}
+	}
+
+	kept, ok := byRule["CVE-KEPT"]
+	if ok && kept.suppressed {
+		t.Error("expected the kept finding to have no suppressions entry")
+	}
+
+	sv, ok := byRule["CVE-2022-28346"]
+	if !ok {
+		t.Fatal("expected the suppressed vuln result to carry a suppressions entry")
+	}
+	if sv.Kind != "external" || sv.Justification != "accepted risk, reviewed by security" {
+		t.Errorf("suppressed vuln = %+v", sv)
+	}
+
+	si, ok := byRule["go-insecure-random-for-secrets"]
+	if !ok {
+		t.Fatal("expected the suppressed issue result to carry a suppressions entry")
+	}
+	if si.Kind != "external" || si.Justification != "false positive, reviewed" {
+		t.Errorf("suppressed issue = %+v", si)
 	}
 }
 

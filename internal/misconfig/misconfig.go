@@ -1,5 +1,6 @@
-// Package misconfig checks Dockerfiles, Kubernetes manifests, and Terraform
-// for common security misconfigurations.
+// Package misconfig checks Dockerfiles, Kubernetes manifests, Terraform, MCP
+// server configs, and Claude Code skill definitions for common security
+// misconfigurations.
 package misconfig
 
 import (
@@ -37,6 +38,12 @@ func Scan(root string) ([]model.Issue, error) {
 				return nil // ponytail: skip unparsable file, don't fail the whole scan
 			}
 			issues = append(issues, found...)
+		case isSkillFile(name):
+			found, err := scanSkill(path)
+			if err != nil {
+				return nil
+			}
+			issues = append(issues, found...)
 		case strings.HasSuffix(name, ".yaml") || strings.HasSuffix(name, ".yml"):
 			// A YAML file is tried as both a Kubernetes manifest and a
 			// CloudFormation template -- each is a no-op on a file that
@@ -49,6 +56,9 @@ func Scan(root string) ([]model.Issue, error) {
 			}
 		case strings.HasSuffix(name, ".json") || strings.HasSuffix(name, ".template"):
 			if found, err := scanCloudFormation(path); err == nil {
+				issues = append(issues, found...)
+			}
+			if found, err := scanMCPConfig(path); err == nil {
 				issues = append(issues, found...)
 			}
 		case strings.HasSuffix(name, ".tf"):

@@ -1,6 +1,6 @@
 # Scanner: Misconfiguration
 
-Checks Dockerfiles, Kubernetes manifests, Terraform (AWS/Azure/GCP), and CloudFormation templates for common security misconfigurations.
+Checks Dockerfiles, Kubernetes manifests, Terraform (AWS/Azure/GCP), CloudFormation templates, MCP server configs, and Claude Code skill definitions for common security misconfigurations.
 
 Off by default — enable with `--scanners misconfig` (or combine: `--scanners vuln,secret,misconfig`).
 
@@ -12,10 +12,12 @@ Off by default — enable with `--scanners misconfig` (or combine: `--scanners v
 | Kubernetes | `*.yaml`/`*.yml` containing `apiVersion` + `kind` | Generic `map[string]any` walk — works uniformly across Pod/Deployment/StatefulSet/DaemonSet/Job/CronJob without needing a struct per kind |
 | Terraform | `*.tf` | [`hashicorp/hcl/v2`](https://github.com/hashicorp/hcl) — the real HCL parser, not a hand-rolled one |
 | CloudFormation | `*.yaml`/`*.yml`/`*.json`/`*.template` containing a `Resources` map with an `AWS::`/`Alexa::`/`Custom::` resource `Type` | `gopkg.in/yaml.v3` (YAML) or `encoding/json` (JSON), both stdlib-adjacent — no new dependency for either |
+| MCP server config | `*.json` containing a top-level `mcpServers` object, or a `servers` object whose own filename also contains "mcp" | `encoding/json` |
+| Skill definition | filename `SKILL.md` (case-insensitive) | Line-based regex, same idiom as the Dockerfile parser |
 
-Every `*.yaml`/`*.yml` file is tried as both a Kubernetes manifest and a CloudFormation template; each is a no-op on a file that doesn't look like its format (missing `apiVersion`+`kind`, or no CloudFormation-shaped `Resources`), so there's no real ambiguity cost to trying both.
+Every `*.yaml`/`*.yml` file is tried as both a Kubernetes manifest and a CloudFormation template; each is a no-op on a file that doesn't look like its format (missing `apiVersion`+`kind`, or no CloudFormation-shaped `Resources`), so there's no real ambiguity cost to trying both. Every `*.json` file is similarly tried as both a CloudFormation template and an MCP config.
 
-## Built-in checks (119)
+## Built-in checks (131)
 
 **Dockerfile**
 
@@ -92,6 +94,29 @@ Every `*.yaml`/`*.yml` file is tried as both a Kubernetes manifest and a CloudFo
 
 Same resource-type coverage as the Terraform AWS checks where CloudFormation has an equivalent: `AWS::S3::Bucket` (public ACL, encryption, versioning, public access block), `AWS::EC2::SecurityGroup`/`SecurityGroupIngress`/`SecurityGroupEgress` (open CIDR), `AWS::RDS::DBInstance` (encryption, public access), `AWS::IAM::Policy`/`ManagedPolicy` (wildcard statements), `AWS::EC2::Instance`/`LaunchTemplate` (IMDSv2), `AWS::ElasticLoadBalancingV2::LoadBalancer` (internet-facing), `AWS::KMS::Key` (rotation), `AWS::CloudTrail::Trail` (log validation, multi-region), `AWS::DynamoDB::Table` (point-in-time recovery), `AWS::ECR::Repository` (tag mutability).
 
+**MCP server config (8 checks)**
+
+- `mcp-unpinned-launcher` (MEDIUM) — a server launched via `npx`/`bunx`/`uvx`/`pipx` with no version pin on the package it fetches (`pkg@x.y.z` / `pkg==x.y.z`). The same unpinned-supply-chain concern as an unpinned Docker base image, just for a process re-fetched on every client startup instead of an image build.
+- `mcp-shell-wrapper` (MEDIUM) — `command` is a raw shell (`sh`/`bash`/`zsh`/`cmd`/`powershell`/`pwsh`) rather than a direct binary. The actually-executed command then lives inside an opaque `-c`/`/c` string argument instead of being visible as `command`+`args`.
+- `mcp-plaintext-transport` (HIGH) — a remote server's `url` is `http://` rather than `https://` (localhost/`127.0.0.1`/`::1` excluded).
+- `mcp-prompt-injection-language` (MEDIUM) — a server's `description` field contains known prompt-injection/tool-poisoning phrasing ("ignore previous instructions," "do not tell the user," ...). A concrete phrase list, not a semantic classifier — see the ceiling note below.
+- `mcp-hidden-unicode` (HIGH) — a server's `description`/`command`/`args`/`url` contains a codepoint with real history as an invisible payload carrier (the Unicode "tag" block, zero-width space/word joiner, a bidi override control, a mid-text ZWNBSP).
+- `mcp-auto-approve-wildcard` (MEDIUM) — a server's `autoApprove`/`alwaysAllow` list includes `"*"`: every tool call, present or added later, skips user confirmation entirely.
+- `mcp-remote-server-unpinned` (LOW) — any server reached over `url` rather than launched locally. Informational: a remote server's behavior can change at any time without a local config change (the "MCP rug pull" pattern) — this flags every remote server for periodic review, not a specific misconfiguration.
+- `mcp-cross-origin-credential` (MEDIUM) — an `env` var name recognizably names a well-known vendor (GitHub, AWS, GCP, Azure, Slack, Stripe, OpenAI, Anthropic, Docker) while nothing in the server's own `command`/`args`/`url` references that vendor — a credential handed to code that doesn't obviously come from where it's for.
+
+Secrets hardcoded in a server's `env` block aren't a separate check here — the [secret scanner](secret.md) already walks every `.json` file and flags them.
+
+**Skill definition (4 checks)**
+
+- `skill-fetch-execute` (HIGH) — `curl`/`wget`/`iwr` piped directly into a shell/interpreter (`sh`/`bash`/`zsh`/`python`/`iex`), the classic fetch-and-execute supply-chain pattern.
+- `skill-credential-exfil-reference` (HIGH) — a well-known credential file path (`.ssh/id_rsa`, `.aws/credentials`, `.netrc`, `.env`, `.npmrc`, `.git-credentials`, `.docker/config.json`) appearing on the same line as an outbound-transfer verb (`curl`, `wget`, `post`, `upload`, `send`).
+- `skill-prompt-injection-language` (MEDIUM) — the body contains the same known prompt-injection phrasing `mcp-prompt-injection-language` checks for.
+- `skill-hidden-unicode` (HIGH) — the body contains the same hidden-Unicode codepoints `mcp-hidden-unicode` checks for.
+- `skill-broad-tool-permissions` (MEDIUM) — frontmatter `allowed-tools` is `"*"` or an unscoped dangerous grant (`Bash`, `Bash(*)`, `Shell`, `Execute`). A scoped grant like `Bash(git:*)` doesn't match.
+
+Hardcoded secrets in `SKILL.md` also aren't a separate check — `.md` is already in the secret scanner's file list.
+
 ## Limitations
 
 !!! note "Terraform variable/local resolution is best-effort, single-directory"
@@ -111,3 +136,15 @@ Same resource-type coverage as the Terraform AWS checks where CloudFormation has
 
 !!! note "No Azure ARM (native JSON) templates, Ansible, or Helm charts"
     Azure coverage here is the `azurerm` Terraform provider, not native ARM/Bicep templates.
+
+!!! note "Prompt-injection/tool-poisoning detection is a phrase list, not a classifier"
+    `mcp-prompt-injection-language`/`skill-prompt-injection-language` match a short, concrete set of known phrasings ("ignore previous instructions," "do not tell the user," ...) — real signal for the crude, common form of the attack, but trivially evaded by rewording, and with a real false-positive risk on legitimate text that happens to use similar phrasing (e.g. a skill that legitimately documents "don't expose this to the user" as a design note about its own output). Expect a higher false-positive/false-negative rate here than every other check in this file; use `.ojoignore` to accept a reviewed false positive.
+
+!!! note "Tool poisoning via a live MCP `tools/list` response isn't checked at all"
+    The checks above read static config files (`command`/`args`/`url`/`description` as written on disk) and a skill's own `SKILL.md`. An MCP server's actual tool descriptions are returned at runtime over the protocol after connecting — ojo is a static file scanner, not an MCP client, so a server that serves clean descriptions in its source but poisoned ones at runtime (or changes them after initial review) isn't detectable this way. `mcp-remote-server-unpinned` flags the underlying exposure (a remote server's behavior isn't pinned by the config) but can't see the actual drift.
+
+!!! note "Cross-origin escalation across multiple connected servers isn't checked"
+    The real multi-server attack — one compromised server's tool output manipulating the model into misusing a *different*, more-privileged server in the same session — is a runtime interaction pattern, invisible in any single config file. `mcp-cross-origin-credential` only catches a narrower, static proxy: a credential env var named for one vendor handed to a server whose own command/args/URL don't reference that vendor. It's a curated ~10-vendor keyword table, so a legitimate multi-service wrapper will trip it and an untabled vendor won't.
+
+!!! note "Skill permission checks assume `allowed-tools` frontmatter; no schema validation beyond that"
+    `skill-broad-tool-permissions` reads a frontmatter key named `allowed-tools` specifically — if a client uses a different field name for the same concept, this check silently sees nothing to flag rather than erroring, the same "no schema to validate against" gap as the rest of this section.

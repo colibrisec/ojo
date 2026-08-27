@@ -40,10 +40,16 @@ type sarifMessage struct {
 }
 
 type sarifResult struct {
-	RuleID    string          `json:"ruleId"`
-	Level     string          `json:"level"`
-	Message   sarifMessage    `json:"message"`
-	Locations []sarifLocation `json:"locations"`
+	RuleID       string             `json:"ruleId"`
+	Level        string             `json:"level"`
+	Message      sarifMessage       `json:"message"`
+	Locations    []sarifLocation    `json:"locations"`
+	Suppressions []sarifSuppression `json:"suppressions,omitempty"`
+}
+
+type sarifSuppression struct {
+	Kind          string `json:"kind"`
+	Justification string `json:"justification,omitempty"`
 }
 
 type sarifLocation struct {
@@ -99,6 +105,43 @@ func (r Report) SARIF(w io.Writer, root string) error {
 				ArtifactLocation: sarifArtifactLocation{URI: sarifPath(root, iss.File)},
 				Region:           region,
 			}}},
+		})
+	}
+
+	for _, sf := range r.SuppressedFindings {
+		v := sf.Vuln
+		if _, ok := rules[v.ID]; !ok {
+			rules[v.ID] = sarifRule{ID: v.ID, ShortDescription: sarifMessage{Text: v.Summary}, HelpURI: v.URL}
+		}
+		results = append(results, sarifResult{
+			RuleID:  v.ID,
+			Level:   sarifLevel(v.Severity),
+			Message: sarifMessage{Text: fmt.Sprintf("%s@%s: %s", sf.Package.Name, sf.Package.Version, v.Summary)},
+			Locations: []sarifLocation{{PhysicalLocation: sarifPhysicalLocation{
+				ArtifactLocation: sarifArtifactLocation{URI: sarifPath(root, sf.Package.Source)},
+			}}},
+			Suppressions: []sarifSuppression{{Kind: "external", Justification: sf.Reason}},
+		})
+	}
+
+	for _, si := range r.SuppressedIssues {
+		iss := si.Issue
+		if _, ok := rules[iss.RuleID]; !ok {
+			rules[iss.RuleID] = sarifRule{ID: iss.RuleID, ShortDescription: sarifMessage{Text: iss.Title}}
+		}
+		var region *sarifRegion
+		if iss.Line > 0 {
+			region = &sarifRegion{StartLine: iss.Line}
+		}
+		results = append(results, sarifResult{
+			RuleID:  iss.RuleID,
+			Level:   sarifLevel(iss.Severity),
+			Message: sarifMessage{Text: iss.Message},
+			Locations: []sarifLocation{{PhysicalLocation: sarifPhysicalLocation{
+				ArtifactLocation: sarifArtifactLocation{URI: sarifPath(root, iss.File)},
+				Region:           region,
+			}}},
+			Suppressions: []sarifSuppression{{Kind: "external", Justification: si.Reason}},
 		})
 	}
 
