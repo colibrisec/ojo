@@ -109,14 +109,17 @@ func ruleApplies(r Rule, line, lowerLine string) (bool, string) {
 			return false, ""
 		}
 	}
-	m := r.compiled.FindString(line)
-	if m == "" {
-		return false, ""
+	// A line can hold more than one candidate match -- e.g. a JSON
+	// "KEY_NAME": "value" pair, where the quoted key itself matches the
+	// generic pattern before the real secret does. Check every match, not
+	// just the first, so an early low-entropy match (a label) can't shadow
+	// a real one later on the same line.
+	for _, m := range r.compiled.FindAllString(line, -1) {
+		if r.MinEntropy == 0 || shannonEntropy(m) >= r.MinEntropy {
+			return true, m
+		}
 	}
-	if r.MinEntropy > 0 && shannonEntropy(m) < r.MinEntropy {
-		return false, ""
-	}
-	return true, m
+	return false, ""
 }
 
 func redact(line string) string {

@@ -9,6 +9,7 @@ import (
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
 
+	"github.com/colibrisec/ojo/internal/ignore"
 	"github.com/colibrisec/ojo/internal/model"
 )
 
@@ -102,6 +103,13 @@ type Report struct {
 	Target   string          `json:"target,omitempty"`
 	Findings []model.Finding `json:"findings,omitempty"`
 	Issues   []model.Issue   `json:"issues,omitempty"`
+
+	// Suppressed holds findings/issues matched by a .ojoignore rule, set by
+	// the caller after filtering Findings/Issues down to the kept set. Only
+	// the SARIF writer reads these (as native `suppressions`); every other
+	// format just omits suppressed results, so they're excluded from JSON.
+	SuppressedFindings []ignore.SuppressedFinding `json:"-"`
+	SuppressedIssues   []ignore.SuppressedIssue   `json:"-"`
 }
 
 func (r Report) JSON(w io.Writer) error {

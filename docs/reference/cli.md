@@ -52,11 +52,12 @@ Usage:
   ojo fs [path] [flags]
 
 Flags:
-      --config string      path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)
-  -f, --format string      output format: table, json, sbom, sarif (default "table")
-  -g, --gitlab             write GitLab-compatible security reports instead of -f/--format output; runs all scanners
-      --rules-dir string   directory of custom *.yaml SAST rules (default: <path>/.ojo/rules, if present); runs alongside --scanners sast
-      --scanners string    comma-separated scanners to run: vuln, secret, misconfig, sast, quality (default "vuln")
+      --config string        path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)
+  -f, --format string        output format: table, json, sbom, sarif (default "table")
+  -g, --gitlab               write GitLab-compatible security reports instead of -f/--format output; runs all scanners
+      --ignore-file string   path to a .ojoignore file (default: .ojoignore in the current directory, if present)
+      --rules-dir string     directory of custom *.yaml SAST rules (default: <path>/.ojo/rules, if present); runs alongside --scanners sast
+      --scanners string      comma-separated scanners to run: vuln, secret, misconfig, sast, quality (default "vuln")
 ```
 
 `path` defaults to `.` (the current directory) if omitted.
@@ -68,6 +69,10 @@ Maintainability smells (complexity, length, nesting, parameter count, duplicate 
 ### `--rules-dir`
 
 Loads user-authored SAST rules from `--rules-dir` (default `<path>/.ojo/rules`) and runs them alongside the built-in rules whenever `sast` is in `--scanners`. See [SAST scanner: Custom rules](../guide/scanner/sast.md#custom-rules) for the YAML format.
+
+### `--ignore-file`
+
+Suppresses findings/issues matched by a `--ignore-file` (default `.ojoignore` in the current directory). Applies to every scanner and every output format — see [Configuration: Risk acceptance](../guide/configuration.md#risk-acceptance-ojoignore) for the file format and SARIF's native-suppression behavior.
 
 ### `-g/--gitlab`
 
@@ -87,8 +92,9 @@ Usage:
   ojo image [ref] [flags]
 
 Flags:
-      --config string    path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)
-  -f, --format string   output format: table, json, sbom, sarif (default "table")
+      --config string        path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)
+  -f, --format string        output format: table, json, sbom, sarif (default "table")
+      --ignore-file string   path to a .ojoignore file (default: .ojoignore in the current directory, if present)
 ```
 
 `ref` is required — any reference `docker pull` would accept (`nginx:1.25`, `myregistry.example.com/app:latest`, `python@sha256:...`).
@@ -96,6 +102,10 @@ Flags:
 ## Config file
 
 See [Configuration](../guide/configuration.md#config-file-ojoyaml).
+
+## Risk acceptance (`.ojoignore`)
+
+See [Configuration](../guide/configuration.md#risk-acceptance-ojoignore).
 
 ## Exit codes
 

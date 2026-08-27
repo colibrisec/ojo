@@ -6,11 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/colibrisec/ojo/internal/config"
 	"github.com/colibrisec/ojo/internal/customrules"
+	"github.com/colibrisec/ojo/internal/ignore"
 	"github.com/colibrisec/ojo/internal/manifest"
 	"github.com/colibrisec/ojo/internal/misconfig"
 	"github.com/colibrisec/ojo/internal/osv"
@@ -26,6 +28,7 @@ func fsCmd() *cobra.Command {
 	var configPath string
 	var gitlab bool
 	var rulesDir string
+	var ignoreFile string
 
 	cmd := &cobra.Command{
 		Use:   "fs [path]",
@@ -69,6 +72,11 @@ func fsCmd() *cobra.Command {
 			customRules, err := customrules.Load(rulesDirPath)
 			if err != nil {
 				return fmt.Errorf("loading custom rules: %w", err)
+			}
+
+			ignoreRules, err := ignore.Load(ignoreFile)
+			if err != nil {
+				return fmt.Errorf("loading ignore file: %w", err)
 			}
 
 			rep := report.Report{Target: root}
@@ -119,6 +127,10 @@ func fsCmd() *cobra.Command {
 					return fmt.Errorf("unknown scanner %q (available: vuln, secret, misconfig, sast, quality)", s)
 				}
 			}
+
+			kept, suppressedFindings, keptIssues, suppressedIssues := ignore.Apply(rep.Findings, rep.Issues, ignoreRules, root, time.Now())
+			rep.Findings, rep.Issues = kept, keptIssues
+			rep.SuppressedFindings, rep.SuppressedIssues = suppressedFindings, suppressedIssues
 
 			if gitlab {
 				pkgs, err := manifest.Discover(root)
@@ -173,5 +185,6 @@ func fsCmd() *cobra.Command {
 	cmd.Flags().StringVar(&configPath, "config", "", "path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)")
 	cmd.Flags().BoolVarP(&gitlab, "gitlab", "g", false, "write GitLab-compatible security reports (gl-dependency-scanning-report.json, gl-sast-report.json, gl-secret-detection-report.json, gl-sbom-report.cdx.json) instead of -f/--format output; runs all scanners")
 	cmd.Flags().StringVar(&rulesDir, "rules-dir", "", "directory of custom *.yaml SAST rules (default: <path>/.ojo/rules, if present); runs alongside --scanners sast")
+	cmd.Flags().StringVar(&ignoreFile, "ignore-file", "", "path to a .ojoignore file (default: .ojoignore in the current directory, if present)")
 	return cmd
 }
