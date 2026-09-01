@@ -32,6 +32,13 @@ type Vulnerability struct {
 	FixedVersion string
 	Aliases      []string
 	URL          string
+
+	// KEV/KEVDateAdded are set by internal/kev when --kev is passed: KEV
+	// means this CVE is in CISA's Known Exploited Vulnerabilities catalog
+	// (confirmed real-world exploitation, not just a CVSS estimate).
+	// Annotation only -- doesn't affect the scan's exit code.
+	KEV          bool   `json:"kev,omitempty"`
+	KEVDateAdded string `json:"kevDateAdded,omitempty"`
 }
 
 type Finding struct {

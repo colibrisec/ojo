@@ -45,6 +45,18 @@ type sarifResult struct {
 	Message      sarifMessage       `json:"message"`
 	Locations    []sarifLocation    `json:"locations"`
 	Suppressions []sarifSuppression `json:"suppressions,omitempty"`
+	Properties   map[string]any     `json:"properties,omitempty"`
+}
+
+// kevProperties is the SARIF result.properties bag for a --kev-annotated
+// finding -- CISA's confirmed-exploited signal, surfaced without changing
+// Level (severity mapping stays CVSS-based; KEV is additive context, not a
+// severity override).
+func kevProperties(kevFlag bool, dateAdded string) map[string]any {
+	if !kevFlag {
+		return nil
+	}
+	return map[string]any{"kev": true, "kevDateAdded": dateAdded}
 }
 
 type sarifSuppression struct {
@@ -85,6 +97,7 @@ func (r Report) SARIF(w io.Writer, root string) error {
 				Locations: []sarifLocation{{PhysicalLocation: sarifPhysicalLocation{
 					ArtifactLocation: sarifArtifactLocation{URI: sarifPath(root, f.Package.Source)},
 				}}},
+				Properties: kevProperties(v.KEV, v.KEVDateAdded),
 			})
 		}
 	}
@@ -121,6 +134,7 @@ func (r Report) SARIF(w io.Writer, root string) error {
 				ArtifactLocation: sarifArtifactLocation{URI: sarifPath(root, sf.Package.Source)},
 			}}},
 			Suppressions: []sarifSuppression{{Kind: "external", Justification: sf.Reason}},
+			Properties:   kevProperties(v.KEV, v.KEVDateAdded),
 		})
 	}
 

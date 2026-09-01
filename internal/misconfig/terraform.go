@@ -2,6 +2,7 @@ package misconfig
 
 import (
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -25,10 +26,22 @@ import (
 
 // tfBlock pairs a parsed block with the file it came from, since checks
 // need the file path for reporting but directory-level scanning parses
-// several files together.
+// several files together. ctx/aliases are only set on blocks pulled into
+// another directory's cross-resource check pool via a local module
+// reference (see scanTerraformDir) -- ctx is the block's own directory's
+// eval context (its locals/variables, not the parent's), and aliases maps
+// its module call's input variable names to the parent resource they were
+// passed, so attrRefName can resolve a child's `var.x`-style reference.
 type tfBlock struct {
-	block *hclsyntax.Block
-	path  string
+	block   *hclsyntax.Block
+	path    string
+	ctx     *hcl.EvalContext
+	aliases map[string]resourceRef
+}
+
+// resourceRef is a resolved "resType.resName" resource address.
+type resourceRef struct {
+	Type, Name string
 }
 
 func parseTFFile(path string) (*hclsyntax.Body, bool) {
@@ -44,48 +57,173 @@ func parseTFFile(path string) (*hclsyntax.Body, bool) {
 	return body, ok
 }
 
-// scanTerraformDir scans every .tf file in one directory as a single
-// Terraform module: shared locals/variables, and cross-resource checks
-// (e.g. S3 bucket <-> its versioning/logging resources) matched across
-// files, not just within one.
-func scanTerraformDir(files []string) []model.Issue {
-	var resources, dataSources, localsBlocks, variableBlocks []tfBlock
+// tfDirBlocks is every relevant block type parsed out of one directory's
+// .tf files.
+type tfDirBlocks struct {
+	resources, dataSources, localsBlocks, variableBlocks, moduleBlocks []tfBlock
+}
 
+func parseTFDir(files []string) tfDirBlocks {
+	var d tfDirBlocks
 	for _, path := range files {
 		body, ok := parseTFFile(path)
 		if !ok {
 			continue
 		}
 		for _, block := range body.Blocks {
+			tb := tfBlock{block: block, path: path}
 			switch block.Type {
 			case "resource":
 				if len(block.Labels) >= 2 {
-					resources = append(resources, tfBlock{block, path})
+					d.resources = append(d.resources, tb)
 				}
 			case "data":
 				if len(block.Labels) >= 2 {
-					dataSources = append(dataSources, tfBlock{block, path})
+					d.dataSources = append(d.dataSources, tb)
 				}
 			case "locals":
-				localsBlocks = append(localsBlocks, tfBlock{block, path})
+				d.localsBlocks = append(d.localsBlocks, tb)
 			case "variable":
 				if len(block.Labels) >= 1 {
-					variableBlocks = append(variableBlocks, tfBlock{block, path})
+					d.variableBlocks = append(d.variableBlocks, tb)
+				}
+			case "module":
+				if len(block.Labels) >= 1 {
+					d.moduleBlocks = append(d.moduleBlocks, tb)
 				}
 			}
 		}
 	}
+	return d
+}
 
-	ctx := buildEvalContext(localsBlocks, variableBlocks)
+// terraformAttachmentResourceTypes are the resource types "attached" to
+// another resource declared elsewhere (an S3 bucket's
+// versioning/encryption/logging/public-access-block, a VPC's flow log) --
+// the only types scanTerraformDir pulls in from a locally-sourced module
+// subdirectory, since those are what real Terraform module layouts most
+// often split out (see scanTerraformDir).
+var terraformAttachmentResourceTypes = map[string]bool{
+	"aws_s3_bucket_versioning":                           true,
+	"aws_s3_bucket_server_side_encryption_configuration": true,
+	"aws_s3_bucket_logging":                              true,
+	"aws_s3_bucket_public_access_block":                  true,
+	"aws_flow_log":                                       true,
+}
+
+// resourceRefFromExpr reports the "resType.resName" a bare HCL traversal
+// expression resolves to, e.g. `aws_s3_bucket.data.id` -> ("aws_s3_bucket",
+// "data"). Used both for the existing same-directory
+// `bucket = aws_s3_bucket.x.id` case and (via resolveLocalModule) for a
+// module call argument's expression -- the root name isn't validated to
+// actually be a resource type here (it might be "var"/"data"/etc.), that's
+// left to the caller (see attrRefName).
+func resourceRefFromExpr(expr hcl.Expression) (resourceRef, bool) {
+	for _, t := range expr.Variables() {
+		if len(t) < 2 {
+			continue
+		}
+		root, ok := t[0].(hcl.TraverseRoot)
+		if !ok {
+			continue
+		}
+		attr, ok := t[1].(hcl.TraverseAttr)
+		if !ok {
+			continue
+		}
+		return resourceRef{Type: root.Name, Name: attr.Name}, true
+	}
+	return resourceRef{}, false
+}
+
+// resolveLocalModule reads a module block's "source" and call arguments.
+// Only a literal, relative-path source ("./..."/"../...", a local
+// subdirectory) resolves -- a registry/git/absolute source returns
+// ok=false, since there's no local directory to pull resources from.
+// aliases maps each argument name to the resource it's a direct reference
+// to (an argument passed some other way -- a literal, a data source, a
+// computed expression -- is simply left out of the map, not an error).
+func resolveLocalModule(dir string, block *hclsyntax.Block) (childDir string, aliases map[string]resourceRef, ok bool) {
+	srcAttr, hasSrc := block.Body.Attributes["source"]
+	if !hasSrc {
+		return "", nil, false
+	}
+	src, diags := srcAttr.Expr.Value(nil)
+	if diags.HasErrors() || src.Type() != cty.String {
+		return "", nil, false
+	}
+	srcStr := src.AsString()
+	if !strings.HasPrefix(srcStr, "./") && !strings.HasPrefix(srcStr, "../") {
+		return "", nil, false
+	}
+
+	aliases = map[string]resourceRef{}
+	for name, attr := range block.Body.Attributes {
+		if name == "source" {
+			continue
+		}
+		if ref, ok := resourceRefFromExpr(attr.Expr); ok {
+			aliases[name] = ref
+		}
+	}
+	return filepath.Clean(filepath.Join(dir, srcStr)), aliases, true
+}
+
+// scanTerraformDir scans dir's own .tf files as one Terraform module:
+// shared locals/variables, and per-resource checks. Cross-resource checks
+// (S3 bucket <-> its versioning/logging/encryption/public-access-block
+// resources, VPC <-> its flow log) also pull in "attachment" resources
+// from any directory dir references via a literal local module source
+// (module "x" { source = "./..." }) -- resolving the child's `var.x`-style
+// references back to dir's own resources through that module call's
+// arguments. Each pulled-in block keeps its own directory's eval context
+// (ctx), since a child module's locals/variables are a different
+// namespace from dir's.
+//
+// ponytail ceiling: one level of module nesting (a module's own module
+// blocks aren't followed), and only for this specific
+// "attachment-resource-passed-a-parent-resource's-id" pattern -- not
+// general module input/output resolution. A child module that declares
+// its own aws_s3_bucket/aws_vpc (rather than referencing the parent's) is
+// unaffected either way: it's still scanned as its own independent
+// directory, same as before this existed.
+func scanTerraformDir(dir string, allDirs map[string][]string) []model.Issue {
+	d := parseTFDir(allDirs[dir])
+	ctx := buildEvalContext(d.localsBlocks, d.variableBlocks)
+	for i := range d.resources {
+		d.resources[i].ctx = ctx
+	}
 
 	var issues []model.Issue
-	for _, r := range resources {
+	for _, r := range d.resources {
 		issues = append(issues, terraformResourceChecks(r.block, r.path, ctx)...)
 	}
-	issues = append(issues, terraformS3CrossResourceChecks(resources, ctx)...)
-	issues = append(issues, terraformVPCFlowLogChecks(resources)...)
-	for _, d := range dataSources {
-		issues = append(issues, terraformDataSourceChecks(d.block, d.path)...)
+
+	combined := append([]tfBlock{}, d.resources...)
+	for _, mb := range d.moduleBlocks {
+		childDir, aliases, ok := resolveLocalModule(dir, mb.block)
+		if !ok {
+			continue
+		}
+		childFiles, ok := allDirs[childDir]
+		if !ok {
+			continue
+		}
+		cd := parseTFDir(childFiles)
+		childCtx := buildEvalContext(cd.localsBlocks, cd.variableBlocks)
+		for _, cr := range cd.resources {
+			if !terraformAttachmentResourceTypes[cr.block.Labels[0]] {
+				continue
+			}
+			cr.ctx, cr.aliases = childCtx, aliases
+			combined = append(combined, cr)
+		}
+	}
+
+	issues = append(issues, terraformS3CrossResourceChecks(combined)...)
+	issues = append(issues, terraformVPCFlowLogChecks(combined)...)
+	for _, ds := range d.dataSources {
+		issues = append(issues, terraformDataSourceChecks(ds.block, ds.path)...)
 	}
 	return issues
 }
@@ -235,7 +373,7 @@ func checkS3BucketNameDNSCompliant(resType, resName, path string, line int, body
 // resources that reference their bucket via `bucket = aws_s3_bucket.x.id`,
 // plus the older inline-block style on aws_s3_bucket itself. References
 // are matched across every file in the directory (see scanTerraformDir).
-func terraformS3CrossResourceChecks(resources []tfBlock, ctx *hcl.EvalContext) []model.Issue {
+func terraformS3CrossResourceChecks(resources []tfBlock) []model.Issue {
 	type bucketInfo struct {
 		block               *hclsyntax.Block
 		path                string
@@ -266,9 +404,9 @@ func terraformS3CrossResourceChecks(resources []tfBlock, ctx *hcl.EvalContext) [
 			for _, nested := range r.Body.Blocks {
 				switch nested.Type {
 				case "versioning":
-					if s, ok := attrString(nested.Body, "status", ctx); ok && s == "Enabled" {
+					if s, ok := attrString(nested.Body, "status", rb.ctx); ok && s == "Enabled" {
 						b.versioned = true
-					} else if e, ok := attrBool(nested.Body, "enabled", ctx); ok && e {
+					} else if e, ok := attrBool(nested.Body, "enabled", rb.ctx); ok && e {
 						b.versioned = true
 					}
 				case "server_side_encryption_configuration":
@@ -278,25 +416,25 @@ func terraformS3CrossResourceChecks(resources []tfBlock, ctx *hcl.EvalContext) [
 				}
 			}
 		case "aws_s3_bucket_versioning":
-			name, ok := attrRefName(r.Body, "bucket", "aws_s3_bucket")
+			name, ok := attrRefName(r.Body, "bucket", "aws_s3_bucket", rb.aliases)
 			if !ok {
 				continue
 			}
 			if vc := findBlockByType(r.Body, "versioning_configuration"); vc != nil {
-				if s, ok := attrString(vc.Body, "status", ctx); ok && s == "Enabled" {
+				if s, ok := attrString(vc.Body, "status", rb.ctx); ok && s == "Enabled" {
 					get(name).versioned = true
 				}
 			}
 		case "aws_s3_bucket_server_side_encryption_configuration":
-			if name, ok := attrRefName(r.Body, "bucket", "aws_s3_bucket"); ok {
+			if name, ok := attrRefName(r.Body, "bucket", "aws_s3_bucket", rb.aliases); ok {
 				get(name).encrypted = true
 			}
 		case "aws_s3_bucket_logging":
-			if name, ok := attrRefName(r.Body, "bucket", "aws_s3_bucket"); ok {
+			if name, ok := attrRefName(r.Body, "bucket", "aws_s3_bucket", rb.aliases); ok {
 				get(name).logged = true
 			}
 		case "aws_s3_bucket_public_access_block":
-			name, ok := attrRefName(r.Body, "bucket", "aws_s3_bucket")
+			name, ok := attrRefName(r.Body, "bucket", "aws_s3_bucket", rb.aliases)
 			if !ok {
 				continue
 			}
@@ -304,7 +442,7 @@ func terraformS3CrossResourceChecks(resources []tfBlock, ctx *hcl.EvalContext) [
 			b.hasAccessBlock = true
 			complete := true
 			for _, attrName := range []string{"block_public_acls", "block_public_policy", "ignore_public_acls", "restrict_public_buckets"} {
-				if v, ok := attrBool(r.Body, attrName, ctx); !ok || !v {
+				if v, ok := attrBool(r.Body, attrName, rb.ctx); !ok || !v {
 					complete = false
 				}
 			}
@@ -369,7 +507,7 @@ func terraformVPCFlowLogChecks(resources []tfBlock) []model.Issue {
 		if r.Labels[0] != "aws_flow_log" {
 			continue
 		}
-		if name, ok := attrRefName(r.Body, "vpc_id", "aws_vpc"); ok {
+		if name, ok := attrRefName(r.Body, "vpc_id", "aws_vpc", rb.aliases); ok {
 			if v, ok := vpcs[name]; ok {
 				v.logged = true
 			}
@@ -942,21 +1080,25 @@ func findBlockByType(body *hclsyntax.Body, t string) *hclsyntax.Block {
 // attrRefName returns the resource-local name referenced by attrName when
 // its expression is (or contains) a traversal rooted at wantType, e.g.
 // `bucket = aws_s3_bucket.data.id` with wantType "aws_s3_bucket" -> "data".
-func attrRefName(body *hclsyntax.Body, attrName, wantType string) (string, bool) {
+// If the expression instead references a module input variable
+// (`bucket = var.bucket_id`) that aliases maps to a wantType resource --
+// i.e. this block was pulled in from a child module whose caller passed
+// that resource's id as an argument -- resolves through the alias too.
+func attrRefName(body *hclsyntax.Body, attrName, wantType string, aliases map[string]resourceRef) (string, bool) {
 	attr, ok := body.Attributes[attrName]
 	if !ok {
 		return "", false
 	}
-	for _, t := range attr.Expr.Variables() {
-		if len(t) < 2 {
-			continue
-		}
-		root, ok := t[0].(hcl.TraverseRoot)
-		if !ok || root.Name != wantType {
-			continue
-		}
-		if a, ok := t[1].(hcl.TraverseAttr); ok {
-			return a.Name, true
+	ref, ok := resourceRefFromExpr(attr.Expr)
+	if !ok {
+		return "", false
+	}
+	if ref.Type == wantType {
+		return ref.Name, true
+	}
+	if ref.Type == "var" {
+		if aliased, ok := aliases[ref.Name]; ok && aliased.Type == wantType {
+			return aliased.Name, true
 		}
 	}
 	return "", false

@@ -81,7 +81,7 @@ func Scan(root string) ([]model.Issue, error) {
 	}
 	sort.Strings(dirs)
 	for _, dir := range dirs {
-		issues = append(issues, scanTerraformDir(tfFilesByDir[dir])...)
+		issues = append(issues, scanTerraformDir(dir, tfFilesByDir)...)
 	}
 	return issues, nil
 }
