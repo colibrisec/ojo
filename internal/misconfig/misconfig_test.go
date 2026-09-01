@@ -195,6 +195,105 @@ resource "aws_security_group" "web" {
 	}
 }
 
+func TestTerraformModuleTraversal(t *testing.T) {
+	dir := t.TempDir()
+	moduleDir := filepath.Join(dir, "modules", "s3-logging")
+	if err := os.MkdirAll(moduleDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Bucket declared at the root; its protections live in a local module,
+	// referenced via a module input variable rather than a direct
+	// aws_s3_bucket.data.id traversal -- the pattern scanTerraformDir's
+	// module resolution exists for.
+	write(t, dir, "bucket.tf", `
+resource "aws_s3_bucket" "data" {
+  bucket = "my-data-bucket"
+}
+
+module "logging" {
+  source    = "./modules/s3-logging"
+  bucket_id = aws_s3_bucket.data.id
+}
+`)
+	write(t, moduleDir, "main.tf", `
+variable "bucket_id" {}
+
+resource "aws_s3_bucket_versioning" "this" {
+  bucket = var.bucket_id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_logging" "this" {
+  bucket = var.bucket_id
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
+  bucket = var.bucket_id
+}
+
+resource "aws_s3_bucket_public_access_block" "this" {
+  bucket                  = var.bucket_id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+`)
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dontWant := map[string]bool{
+		"tf-s3-versioning-disabled":            true,
+		"tf-s3-logging-disabled":               true,
+		"tf-s3-unencrypted":                    true,
+		"tf-s3-missing-public-access-block":    true,
+		"tf-s3-public-access-block-incomplete": true,
+	}
+	for _, i := range issues {
+		if dontWant[i.RuleID] {
+			t.Errorf("rule %s should not have fired (module input should have resolved var.bucket_id to aws_s3_bucket.data), got issues: %+v", i.RuleID, issues)
+		}
+	}
+}
+
+func TestTerraformModuleTraversalIgnoresNonLocalSource(t *testing.T) {
+	dir := t.TempDir()
+	// A registry source has no local directory to pull resources from --
+	// the bucket's protections stay unresolved (as they always would have
+	// been), and the scan must not error or panic trying to resolve it.
+	write(t, dir, "bucket.tf", `
+resource "aws_s3_bucket" "data" {
+  bucket = "my-data-bucket"
+}
+
+module "logging" {
+  source    = "terraform-aws-modules/s3-bucket/aws"
+  bucket_id = aws_s3_bucket.data.id
+}
+`)
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var found bool
+	for _, i := range issues {
+		if i.RuleID == "tf-s3-versioning-disabled" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected tf-s3-versioning-disabled to still fire -- a registry module source shouldn't be treated as a local subdirectory")
+	}
+}
+
 func TestTerraformChecksRound2(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "main.tf", `

@@ -13,6 +13,16 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # getsentry/codecov-action needs these beyond the default contents:read --
+    # it's fully self-hosted (GitHub Artifacts + GITHUB_TOKEN, no external
+    # account), but posting the PR comment/status still needs write access to
+    # them. On a fork PR, GITHUB_TOKEN is force-read-only regardless of this
+    # block, so it degrades to just the job summary there -- no error either way.
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+      statuses: write
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -21,6 +31,39 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Test
-        run: go test ./...
+        run: go test -coverprofile=coverage.out -covermode=atomic ./...
+      - name: Coverage report
+        uses: getsentry/codecov-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          post-pr-comment: true
       - name: Build
         run: go build ./...
+
+  # Updates the wiki with a coverage badge, browsable HTML report, and a
+  # trend chart across commits -- ncruces/go-coverage-report, also fully
+  # self-hosted (writes to this repo's own wiki, no external service). Only
+  # on push to main: a PR's GITHUB_TOKEN can't write the wiki anyway, and an
+  # unmerged PR's coverage shouldn't overwrite the badge regardless.
+  #
+  # Requires the repo's Wiki feature to be enabled (Settings > Features >
+  # Wikis) -- a one-time repo-admin step this workflow can't do for you.
+  coverage-badge:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+      - name: Test
+        run: go test -v ./...
+      - name: Update coverage report
+        uses: ncruces/go-coverage-report@v0
+        with:
+          report: true
+          chart: true
+          amend: true
+        continue-on-error: true # a not-yet-enabled wiki shouldn't fail the whole build

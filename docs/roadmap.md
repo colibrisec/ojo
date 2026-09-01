@@ -18,18 +18,18 @@ ojo is young. This page is the honest, unvarnished list of what it doesn't do ye
 ## Scanners
 
 - **Secret scanner**: `--secret-git-history` scans `git log -p` on the current branch (current-branch history only, one finding per commit a secret was added in, not deduplicated); `--secret-rules-file` loads additional rules (same YAML shape as the built-in set). `.ojoignore` suppression already works — secret findings are `model.Issue`s like any other scanner's, and flow through the same suppression pass.
-- **Misconfiguration scanner**: no data-driven policy language (Rego/OPA) — checks are hand-written Go, not a pluggable policy format. Terraform checks cover AWS/Azure/GCP providers, resolve `local.x`/`var.x` (literal defaults only), and correlate resources within one directory, but don't traverse `module` blocks into subdirectories. CloudFormation (YAML or JSON) is covered too, literal values only — unresolved intrinsic functions are skipped. Kubernetes checks don't render Helm charts or resolve Kustomize overlays. No native Azure ARM templates, Ansible, or Helm chart support.
+- **Misconfiguration scanner**: no data-driven policy language (Rego/OPA) — checks are hand-written Go, not a pluggable policy format. Terraform checks cover AWS/Azure/GCP providers, resolve `local.x`/`var.x` (literal defaults only), and correlate resources within one directory, including one level into a local module subdirectory (`module "x" { source = "./..." }`) for the specific "attachment resource passed a parent resource's id via a variable" pattern (S3 bucket protections, VPC flow logs) — not general module input/output resolution, and a nested module's own `module` blocks aren't followed. CloudFormation (YAML or JSON) is covered too, literal values only — unresolved intrinsic functions are skipped. Kubernetes checks don't render Helm charts or resolve Kustomize overlays. No native Azure ARM templates, Ansible, or Helm chart support.
 - **SAST scanner**: covers Go, Python, JavaScript/TypeScript, PHP, Ruby, and Java. Intraprocedural taint tracking across all six (sees through one local variable between a request/env source and a sink, on whichever rules structurally support it — see the SAST guide for exact coverage); user-authorable custom rules via `--rules-dir` for the five gotreesitter-backed languages (raw tree-sitter queries, not a Semgrep-style metavariable pattern language — no Go, see [SAST scanner: Custom rules](guide/scanner/sast.md#custom-rules)); no interprocedural analysis (taint doesn't cross a function call) — see [SAST scanner](guide/scanner/sast.md) for the full per-language rule lists and honest ceiling.
 - **Code quality scanner** (`--scanners quality`): cyclomatic complexity, function length, nesting depth, parameter count, and cross-file duplicate-code detection, across the same six languages. Thresholds are hardcoded, not yet `.ojo.yaml`-configurable; duplicate detection is textual (line-based), not semantic; no GitLab Code Quality report format yet — see [Code Quality scanner](guide/scanner/quality.md) for the full rule list and honest ceiling.
 - **License scanning**: not implemented.
-- **VEX**: not implemented.
+- **VEX**: `-f vex` emits an [OpenVEX](https://openvex.dev) document (every statement asserts `affected` — ojo has no reachability analysis to justify anything else); `--vex-file` consumes one, suppressing findings its `not_affected`/`fixed` statements cover. Product matching is exact purl equality, no normalization.
 
 ## Vulnerability data
 
 - **No local database.** Every scan queries the live [OSV.dev](https://osv.dev) API — no offline/air-gapped mode.
 - **Fixed-version resolution** uses a generic, approximate version comparator, not each ecosystem's exact comparison rules (dpkg epoch/tilde semantics, real semver, PEP 440).
 - **Ubuntu LTS detection** is a release-history heuristic (even year, April release), not derived from an authoritative source.
-- **No CISA KEV cross-referencing** — a finding isn't flagged even when its CVE is known to be actively exploited in the wild.
+- `--kev` cross-references findings against CISA's Known Exploited Vulnerabilities catalog (annotation only, doesn't affect exit code).
 
 ## Supply chain
 

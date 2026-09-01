@@ -20,6 +20,7 @@ import (
 	"github.com/colibrisec/ojo/internal/report"
 	"github.com/colibrisec/ojo/internal/sast"
 	"github.com/colibrisec/ojo/internal/secret"
+	"github.com/colibrisec/ojo/internal/vex"
 )
 
 func fsCmd() *cobra.Command {
@@ -32,6 +33,8 @@ func fsCmd() *cobra.Command {
 	var cyclonedxVersion string
 	var secretRulesFile string
 	var secretGitHistory bool
+	var kevFlag bool
+	var vexFile string
 
 	cmd := &cobra.Command{
 		Use:   "fs [path]",
@@ -90,6 +93,10 @@ func fsCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("loading ignore file: %w", err)
 			}
+			vexStatements, err := vex.Load(vexFile)
+			if err != nil {
+				return fmt.Errorf("loading VEX file: %w", err)
+			}
 
 			rep := report.Report{Target: root}
 			for _, s := range strings.Split(scanners, ",") {
@@ -102,6 +109,11 @@ func fsCmd() *cobra.Command {
 					findings, err := osv.Scan(cmd.Context(), pkgs)
 					if err != nil {
 						return fmt.Errorf("querying OSV: %w", err)
+					}
+					if kevFlag {
+						if err := annotateKEV(cmd, findings); err != nil {
+							return err
+						}
 					}
 					rep.Findings = findings
 				case "secret":
@@ -150,6 +162,11 @@ func fsCmd() *cobra.Command {
 			kept, suppressedFindings, keptIssues, suppressedIssues := ignore.Apply(rep.Findings, rep.Issues, ignoreRules, root, time.Now())
 			rep.Findings, rep.Issues = kept, keptIssues
 			rep.SuppressedFindings, rep.SuppressedIssues = suppressedFindings, suppressedIssues
+			if len(vexStatements) > 0 {
+				vexKept, vexSuppressed := vex.Apply(rep.Findings, vexStatements)
+				rep.Findings = vexKept
+				rep.SuppressedFindings = append(rep.SuppressedFindings, vexSuppressed...)
+			}
 
 			if gitlab {
 				pkgs, err := manifest.Discover(root)
@@ -187,6 +204,11 @@ func fsCmd() *cobra.Command {
 					if err := rep.SARIF(cmd.OutOrStdout(), root); err != nil {
 						return err
 					}
+				case "vex":
+					doc := vex.Generate(rep.Findings, "ojo "+Version, time.Now())
+					if err := vex.Write(cmd.OutOrStdout(), doc); err != nil {
+						return err
+					}
 				default:
 					rep.Table(cmd.OutOrStdout(), root)
 				}
@@ -199,7 +221,7 @@ func fsCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, sbom, sarif")
+	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, sbom, sarif, vex")
 	cmd.Flags().StringVar(&scanners, "scanners", "vuln", "comma-separated scanners to run: vuln, secret, misconfig, sast, quality")
 	cmd.Flags().StringVar(&configPath, "config", "", "path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)")
 	cmd.Flags().BoolVarP(&gitlab, "gitlab", "g", false, "write GitLab-compatible security reports (gl-dependency-scanning-report.json, gl-sast-report.json, gl-secret-detection-report.json, gl-sbom-report.cdx.json) instead of -f/--format output; runs all scanners")
@@ -208,5 +230,7 @@ func fsCmd() *cobra.Command {
 	cmd.Flags().StringVar(&cyclonedxVersion, "cyclonedx-version", "", "CycloneDX spec version for -f sbom output, e.g. 1.4 (default: latest)")
 	cmd.Flags().StringVar(&secretRulesFile, "secret-rules-file", "", "path to a YAML file of additional secret rules (same shape as the built-in rules), run alongside --scanners secret")
 	cmd.Flags().BoolVar(&secretGitHistory, "secret-git-history", false, "also scan git commit history (current branch) for secrets that were committed and later removed; requires root to be a git repository")
+	cmd.Flags().BoolVar(&kevFlag, "kev", false, "flag findings whose CVE is in CISA's Known Exploited Vulnerabilities catalog (confirmed real-world exploitation); annotation only, doesn't affect exit code")
+	cmd.Flags().StringVar(&vexFile, "vex-file", "", "path to an OpenVEX document; suppresses findings its not_affected/fixed statements cover (matched by product purl and CVE/alias)")
 	return cmd
 }
