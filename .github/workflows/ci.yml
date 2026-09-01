@@ -33,7 +33,7 @@ jobs:
       - name: Test
         run: go test -coverprofile=coverage.out -covermode=atomic ./...
       - name: Coverage report
-        uses: getsentry/codecov-action@0.3.8
+        uses: getsentry/codecov-action@eb2b4a6c4be3ecb42867043570579fa3b6879f6e # v0.3.8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           post-pr-comment: true
@@ -61,7 +61,7 @@ jobs:
       - name: Test
         run: go test -v ./...
       - name: Update coverage report
-        uses: ncruces/go-coverage-report@v0
+        uses: ncruces/go-coverage-report@dfc237255099f2d25066babde51253992175e365 # v0.3.2
         with:
           report: true
           chart: true
