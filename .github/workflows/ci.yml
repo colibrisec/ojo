@@ -33,7 +33,7 @@ jobs:
       - name: Test
         run: go test -coverprofile=coverage.out -covermode=atomic ./...
       - name: Coverage report
-        uses: getsentry/codecov-action@v1
+        uses: getsentry/codecov-action@0.3.8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           post-pr-comment: true
