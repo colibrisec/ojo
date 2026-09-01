@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -9,8 +10,12 @@ import (
 )
 
 func main() {
-	if err := cli.Root().ExecuteContext(context.Background()); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	err := cli.Root().ExecuteContext(context.Background())
+	if err == nil {
+		return
 	}
+	if !errors.Is(err, cli.ErrFindingsFound) {
+		fmt.Fprintln(os.Stderr, err)
+	}
+	os.Exit(1)
 }

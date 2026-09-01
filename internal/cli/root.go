@@ -1,14 +1,26 @@
 // Package cli wires ojo's cobra commands.
 package cli
 
-import "github.com/spf13/cobra"
+import (
+	"errors"
+
+	"github.com/spf13/cobra"
+)
 
 var Version = "dev"
+
+// ErrFindingsFound signals "exit 1, print nothing" -- fs/image return it
+// instead of calling os.Exit directly, so RunE stays testable in-process.
+var ErrFindingsFound = errors.New("findings found")
 
 func Root() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "ojo",
 		Short: "ojo is a security scanner for dependencies, secrets, misconfig, and code",
+		// Errors are printed exactly once, by main.go -- without these,
+		// cobra's own default error printing would double up with it.
+		SilenceErrors: true,
+		SilenceUsage:  true,
 		Long: `ojo is a security scanner for dependencies, secrets, misconfig, and code.
 
 Scanners (--scanners, comma-separated, ojo fs only):

@@ -215,7 +215,7 @@ func fsCmd() *cobra.Command {
 			}
 
 			if len(rep.Findings) > 0 || len(rep.Issues) > 0 {
-				os.Exit(1) // non-zero exit on findings, matches trivy/CI scanner convention
+				return ErrFindingsFound // non-zero exit on findings, matches trivy/CI scanner convention
 			}
 			return nil
 		},
