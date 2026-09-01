@@ -183,6 +183,19 @@ func TestApply_IssueSuppressed(t *testing.T) {
 	}
 }
 
+// Secret findings are model.Issues shaped identically to any other
+// scanner's (RuleID + File), so .ojoignore suppresses them the same way
+// with no secret-specific code -- pins that this stays true.
+func TestApply_SuppressesSecretIssues(t *testing.T) {
+	issues := []model.Issue{{Scanner: "secret", RuleID: "aws-access-key", File: "internal/testdata/fixture.env"}}
+	rules := []Rule{{ID: "aws-access-key", PathGlob: "internal/testdata/*.env", Reason: "known-good test fixture"}}
+
+	_, _, kept, suppressed := Apply(nil, issues, rules, "", time.Now())
+	if len(kept) != 0 || len(suppressed) != 1 {
+		t.Errorf("expected the secret issue suppressed, kept=%+v suppressed=%+v", kept, suppressed)
+	}
+}
+
 func TestApply_PathIsRelativeToRoot(t *testing.T) {
 	issues := []model.Issue{{RuleID: "r1", File: filepath.Join("repo", "internal", "foo.go")}}
 	rules := []Rule{{ID: "r1", PathGlob: "internal/foo.go", Reason: "x"}}
