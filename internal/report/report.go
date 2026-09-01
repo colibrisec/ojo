@@ -177,7 +177,34 @@ func printTotalLine(w io.Writer, findings []model.Finding, issues []model.Issue)
 	fmt.Fprintf(w, "Total: %d (%s)\n", total, strings.Join(parts, ", "))
 }
 
-func SBOM(w io.Writer, pkgs []model.Package) error {
+// cyclonedxVersions maps a --cyclonedx-version flag value to the spec
+// version it selects. "" (the flag's default) means latest.
+var cyclonedxVersions = map[string]cdx.SpecVersion{
+	"":    cdx.SpecVersion1_7,
+	"1.0": cdx.SpecVersion1_0,
+	"1.1": cdx.SpecVersion1_1,
+	"1.2": cdx.SpecVersion1_2,
+	"1.3": cdx.SpecVersion1_3,
+	"1.4": cdx.SpecVersion1_4,
+	"1.5": cdx.SpecVersion1_5,
+	"1.6": cdx.SpecVersion1_6,
+	"1.7": cdx.SpecVersion1_7,
+}
+
+// ParseCycloneDXVersion validates a --cyclonedx-version flag value. "" means
+// latest. JSON output (the only format ojo writes) isn't supported below 1.2.
+func ParseCycloneDXVersion(s string) (cdx.SpecVersion, error) {
+	v, ok := cyclonedxVersions[s]
+	if !ok {
+		return 0, fmt.Errorf("unsupported CycloneDX version %q (supported: 1.0-1.7)", s)
+	}
+	if v < cdx.SpecVersion1_2 {
+		return 0, fmt.Errorf("CycloneDX version %q: ojo's SBOM output is JSON, not supported below 1.2", s)
+	}
+	return v, nil
+}
+
+func SBOM(w io.Writer, pkgs []model.Package, version cdx.SpecVersion) error {
 	bom := cdx.NewBOM()
 	components := make([]cdx.Component, 0, len(pkgs))
 	for _, p := range pkgs {
@@ -192,7 +219,7 @@ func SBOM(w io.Writer, pkgs []model.Package) error {
 
 	enc := cdx.NewBOMEncoder(w, cdx.BOMFileFormatJSON)
 	enc.SetPretty(true)
-	return enc.Encode(bom)
+	return enc.EncodeVersion(bom, version)
 }
 
 func purl(p model.Package) string {

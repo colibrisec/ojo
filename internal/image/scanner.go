@@ -10,8 +10,8 @@ import (
 	"github.com/colibrisec/ojo/internal/model"
 )
 
-func Scan(ctx context.Context, ref string) ([]model.Package, string, error) {
-	rc, err := extractFS(ctx, ref)
+func Scan(ctx context.Context, ref, platform string) ([]model.Package, string, error) {
+	rc, err := extractFS(ctx, ref, platform)
 	if err != nil {
 		return nil, "", fmt.Errorf("pulling %s: %w", ref, err)
 	}

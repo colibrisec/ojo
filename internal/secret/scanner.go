@@ -39,8 +39,15 @@ func isConfigFile(path string) bool {
 	return configExts[filepath.Ext(base)]
 }
 
-func Scan(root string) ([]model.Issue, error) {
+// Scan runs the built-in secret rules, plus extraRules (from
+// --secret-rules-file, if any), against every config-shaped file under
+// root.
+func Scan(root string, extraRules []Rule) ([]model.Issue, error) {
 	rules, err := DefaultRules()
+	if err != nil {
+		return nil, err
+	}
+	rules, err = mergeRules(rules, extraRules)
 	if err != nil {
 		return nil, err
 	}
