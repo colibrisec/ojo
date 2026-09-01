@@ -8,14 +8,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/colibrisec/ojo/internal/kev"
+	"github.com/colibrisec/ojo/internal/model"
 )
 
 // run executes fsCmd() with args against dir, returning combined
-// stdout+stderr and the RunE error. Avoids the vuln/kev scanners
-// throughout -- they hit real external services (OSV.dev, CISA), which
-// this package can't stub the way internal/osv and internal/kev's own
-// tests do (their httptest overrides target unexported package vars this
-// package has no access to).
+// stdout+stderr and the RunE error. --scanners vuln/--kev need
+// stubOSVScan/stubKevLoad (deps_test.go) rather than a real OSV.dev/CISA
+// call.
 func run(t *testing.T, dir string, args ...string) (string, error) {
 	t.Helper()
 	cmd := fsCmd()
@@ -98,6 +99,111 @@ func TestFsCmd_SBOMFormat(t *testing.T) {
 	}
 	if !strings.Contains(out, "pkg:pypi/django@3.2.0") {
 		t.Errorf("expected the django component in the SBOM, got %q", out)
+	}
+}
+
+func TestFsCmd_VulnScannerStub(t *testing.T) {
+	dir := t.TempDir()
+	stubOSVScan(t, []model.Finding{{
+		Package: model.Package{Name: "x", Version: "1"},
+		Vulns:   []model.Vulnerability{{ID: "CVE-2024-1", Severity: "HIGH"}},
+	}}, nil)
+
+	out, err := run(t, dir, "--scanners", "vuln")
+	if !errors.Is(err, ErrFindingsFound) {
+		t.Fatalf("expected ErrFindingsFound, got %v", err)
+	}
+	if !strings.Contains(out, "CVE-2024-1") {
+		t.Errorf("got %q", out)
+	}
+}
+
+func TestFsCmd_VulnScannerOSVErrorPropagates(t *testing.T) {
+	dir := t.TempDir()
+	stubOSVScan(t, nil, errors.New("osv down"))
+
+	_, err := run(t, dir, "--scanners", "vuln")
+	if err == nil || !strings.Contains(err.Error(), "osv down") {
+		t.Errorf("expected the osv.Scan error to propagate, got %v", err)
+	}
+}
+
+func TestFsCmd_VulnScannerKevFlag(t *testing.T) {
+	dir := t.TempDir()
+	stubOSVScan(t, []model.Finding{{
+		Package: model.Package{Name: "x", Version: "1"},
+		Vulns:   []model.Vulnerability{{ID: "CVE-2024-1"}},
+	}}, nil)
+	stubKevLoad(t, kev.Set{"CVE-2024-1": kev.Entry{DateAdded: "2024-01-01"}}, false, nil)
+
+	out, err := run(t, dir, "--scanners", "vuln", "--kev")
+	if !errors.Is(err, ErrFindingsFound) {
+		t.Fatalf("expected ErrFindingsFound, got %v", err)
+	}
+	if !strings.Contains(out, "KEV") {
+		t.Errorf("expected a KEV marker in output, got %q", out)
+	}
+}
+
+func TestFsCmd_VulnScannerKevLoadErrorPropagates(t *testing.T) {
+	dir := t.TempDir()
+	stubOSVScan(t, []model.Finding{{Package: model.Package{Name: "x", Version: "1"}, Vulns: []model.Vulnerability{{ID: "CVE-2024-1"}}}}, nil)
+	stubKevLoad(t, nil, false, errors.New("feed unreachable"))
+
+	_, err := run(t, dir, "--scanners", "vuln", "--kev")
+	if err == nil || !strings.Contains(err.Error(), "feed unreachable") {
+		t.Errorf("expected the KEV load error to propagate, got %v", err)
+	}
+}
+
+func TestFsCmd_VexFileSuppresses(t *testing.T) {
+	dir := t.TempDir()
+	vexDoc := `{"@context":"https://openvex.dev/ns/v0.2.0","author":"t","timestamp":"2026-01-01T00:00:00Z","version":1,` +
+		`"statements":[{"vulnerability":{"name":"CVE-2024-1"},"products":[{"@id":"pkg:generic/x@1"}],"status":"not_affected"}]}`
+	write(t, dir, "accept.vex.json", vexDoc)
+	stubOSVScan(t, []model.Finding{{
+		Package: model.Package{Name: "x", Version: "1"},
+		Vulns:   []model.Vulnerability{{ID: "CVE-2024-1"}},
+	}}, nil)
+
+	out, err := run(t, dir, "--scanners", "vuln", "--vex-file", filepath.Join(dir, "accept.vex.json"))
+	if err != nil {
+		t.Fatalf("expected the finding to be suppressed (no error), got %v", err)
+	}
+	if !strings.Contains(out, "No issues found") {
+		t.Errorf("got %q", out)
+	}
+}
+
+func TestFsCmd_ConfigFileSetsFormatAndScanners(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, ".env", "AWS_ACCESS_KEY_ID=AKIAABCDEFGHIJKLMNOP\n")
+	cfgPath := filepath.Join(dir, ".ojo.yaml")
+	write(t, dir, ".ojo.yaml", "scanners: secret\nformat: json\n")
+
+	out, err := run(t, dir, "--config", cfgPath)
+	if !errors.Is(err, ErrFindingsFound) {
+		t.Fatalf("expected ErrFindingsFound, got %v", err)
+	}
+	if !strings.Contains(out, `"RuleID": "aws-access-key-id"`) {
+		t.Errorf("expected the config file's scanners/format to take effect (JSON output with the secret finding), got %q", out)
+	}
+}
+
+func TestFsCmd_CustomRulesDirBadPathIsAnError(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := run(t, dir, "--rules-dir", filepath.Join(dir, "nope")); err == nil {
+		t.Error("expected an error for a missing explicit --rules-dir path")
+	}
+}
+
+func TestFsCmd_SecretRulesFileBadRegexIsAnError(t *testing.T) {
+	dir := t.TempDir()
+	rulesPath := filepath.Join(dir, "rules.yaml")
+	write(t, dir, "rules.yaml", "rules:\n  - id: bad\n    regex: \"[unclosed\"\n    severity: HIGH\n")
+
+	if _, err := run(t, dir, "--scanners", "secret", "--secret-rules-file", rulesPath); err == nil {
+		t.Error("expected an error for an invalid regex in --secret-rules-file")
 	}
 }
 

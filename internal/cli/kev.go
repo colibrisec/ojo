@@ -16,7 +16,7 @@ import (
 // didn't happen; a fetch failure with a stale cache available prints a
 // warning to stderr instead, since stale KEV data is still useful.
 func annotateKEV(cmd *cobra.Command, findings []model.Finding) error {
-	set, stale, err := kev.Load(kev.DefaultCachePath())
+	set, stale, err := kevLoad(kev.DefaultCachePath())
 	if err != nil {
 		return fmt.Errorf("loading KEV catalog: %w", err)
 	}
