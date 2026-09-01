@@ -154,6 +154,27 @@ Four separate gaps, requested together, sequenced because each is independently 
    - Tests: one file per language in `internal/quality/`, each with a single fixture function breaching all four AST-metric thresholds simultaneously plus one clean function (asserting exact rule-ID counts, not just "something fired"), plus `duplicates_test.go` covering a real cross-file duplicate (and its correct forward extension), a trivial-repeat negative case, and a distinct-files negative case. All passed on first run across all six languages. Verified end-to-end through the built binary too, including the duplicate-extension behavior showing the true block range in the table output, not just unit-tested in isolation.
    - Docs: new `docs/guide/scanner/quality.md` (full rule table, thresholds, honest ceiling), `mkdocs.yml` nav entry, `docs/reference/cli.md` (`--scanners quality` section), `docs/roadmap.md`.
 
+### KEV (CISA Known Exploited Vulnerabilities) enrichment
+
+CVSS severity alone doesn't say whether a CVE is actually being exploited in the wild. CISA publishes a free, stable JSON feed (`known_exploited_vulnerabilities.json`) of CVEs with confirmed real-world exploitation — cross-referencing findings against it is a cheap, high-signal addition other scanners (Grype, Trivy) already do.
+
+- Match each `Finding`'s ID/`Aliases` (CVE form) against the KEV catalog; add a `KEV bool` (+ `KEVDateAdded`) field to `model.Finding`.
+- Surface it in every report format: a badge in `table`, the boolean field in `json` (already free since it's a struct field), a SARIF severity bump, a GitLab column.
+- No new dependency for the fetch — stdlib `net/http`/`encoding/json`. Caching strategy is the open decision: fetch once per run (simplest, adds network dependency to every scan) vs. cache to `~/.cache/ojo/kev.json` with a refresh interval (same shape as the local OSV DB item below, but far smaller — worth building first as a warm-up for that one, or independently since it doesn't need the full offline-DB design).
+- Open decision: does a KEV hit affect `--exit-code`/severity threshold once that lands, or purely annotate? Note the dependency on that not-yet-built flag (see `docs/roadmap.md`).
+
+### CycloneDX SBOM spec version flag — ✅ shipped
+
+`--cyclonedx-version` on `ojo fs`/`ojo image` (default: latest, i.e. 1.7). Simpler than this entry originally scoped: `cyclonedx-go` (already a dependency) exposes `SpecVersion1_0`...`1_7` plus a `BOMEncoder.EncodeVersion(bom, version)` that does the field-downgrading itself (`bom.copyAndConvert`) — no hand-rolled per-version struct diffing needed. `report.ParseCycloneDXVersion` validates the flag value and rejects anything below 1.2 (ojo's SBOM output is JSON-only, and the library itself doesn't support JSON below 1.2). Tests: `internal/report/sbom_test.go`.
+
+### VEX (Vulnerability Exploitability eXchange)
+
+Not implemented (see `docs/roadmap.md`). Two independent directions — pick based on which real-world use case is driving the request, they don't have to ship together:
+
+1. **VEX output** — emit a VEX document alongside the SBOM. Ojo has no reachability analysis, so it can only mechanically assert `affected` for every live finding, not `not_affected`; the value is giving downstream tooling/humans a standard structure to fill in real exploitability judgment, not ojo generating the judgment itself.
+2. **VEX input/consumption** — read an existing VEX document and suppress findings it marks `not_affected`/`fixed`. Standards-based analogue of `.ojoignore`; likely reuses `internal/ignore`'s `Apply`/`SuppressedFindings` plumbing with a VEX-document loader instead of (or alongside) `.ojoignore`. Probably the higher-value direction of the two — ingesting someone else's exploitability assertions is more actionable than emitting ojo's own low-information ones.
+3. **Format decision**: OpenVEX (simpler, purpose-built) vs. CycloneDX VEX (reuses the CycloneDX code this project already has for SBOM). Check what real-world consumers actually expect before picking — don't default to CycloneDX just because the SBOM code exists.
+
 ### Local/offline vulnerability database
 
 Currently every scan is a live query to OSV.dev (`internal/osv/client.go`) — no offline/air-gapped mode, and no resilience if OSV.dev is unreachable or rate-limits.

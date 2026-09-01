@@ -18,6 +18,8 @@ func imageCmd() *cobra.Command {
 	var format string
 	var configPath string
 	var ignoreFile string
+	var platform string
+	var cyclonedxVersion string
 
 	cmd := &cobra.Command{
 		Use:   "image [ref]",
@@ -33,7 +35,11 @@ func imageCmd() *cobra.Command {
 			if cfg.Format != "" && !cmd.Flags().Changed("format") {
 				format = cfg.Format
 			}
-			pkgs, osLabel, err := image.Scan(cmd.Context(), ref)
+			sbomVersion, err := report.ParseCycloneDXVersion(cyclonedxVersion)
+			if err != nil {
+				return err
+			}
+			pkgs, osLabel, err := image.Scan(cmd.Context(), ref, platform)
 			if err != nil {
 				return err
 			}
@@ -43,7 +49,7 @@ func imageCmd() *cobra.Command {
 			}
 
 			if format == "sbom" {
-				return report.SBOM(cmd.OutOrStdout(), pkgs)
+				return report.SBOM(cmd.OutOrStdout(), pkgs, sbomVersion)
 			}
 
 			findings, err := osv.Scan(cmd.Context(), pkgs)
@@ -82,5 +88,7 @@ func imageCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, sbom, sarif")
 	cmd.Flags().StringVar(&configPath, "config", "", "path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)")
 	cmd.Flags().StringVar(&ignoreFile, "ignore-file", "", "path to a .ojoignore file (default: .ojoignore in the current directory, if present)")
+	cmd.Flags().StringVar(&platform, "platform", "", "image platform to pull as os/arch, e.g. linux/arm64 (default: linux/amd64)")
+	cmd.Flags().StringVar(&cyclonedxVersion, "cyclonedx-version", "", "CycloneDX spec version for -f sbom output, e.g. 1.4 (default: latest)")
 	return cmd
 }

@@ -29,6 +29,9 @@ func fsCmd() *cobra.Command {
 	var gitlab bool
 	var rulesDir string
 	var ignoreFile string
+	var cyclonedxVersion string
+	var secretRulesFile string
+	var secretGitHistory bool
 
 	cmd := &cobra.Command{
 		Use:   "fs [path]",
@@ -51,12 +54,17 @@ func fsCmd() *cobra.Command {
 				scanners = cfg.Scanners
 			}
 
+			sbomVersion, err := report.ParseCycloneDXVersion(cyclonedxVersion)
+			if err != nil {
+				return err
+			}
+
 			if format == "sbom" {
 				pkgs, err := manifest.Discover(root)
 				if err != nil {
 					return fmt.Errorf("discovering manifests: %w", err)
 				}
-				return report.SBOM(cmd.OutOrStdout(), pkgs)
+				return report.SBOM(cmd.OutOrStdout(), pkgs, sbomVersion)
 			}
 
 			if gitlab {
@@ -72,6 +80,10 @@ func fsCmd() *cobra.Command {
 			customRules, err := customrules.Load(rulesDirPath)
 			if err != nil {
 				return fmt.Errorf("loading custom rules: %w", err)
+			}
+			extraSecretRules, err := secret.LoadRules(secretRulesFile)
+			if err != nil {
+				return fmt.Errorf("loading secret rules file: %w", err)
 			}
 
 			ignoreRules, err := ignore.Load(ignoreFile)
@@ -93,11 +105,18 @@ func fsCmd() *cobra.Command {
 					}
 					rep.Findings = findings
 				case "secret":
-					issues, err := secret.Scan(root)
+					issues, err := secret.Scan(root, extraSecretRules)
 					if err != nil {
 						return fmt.Errorf("scanning secrets: %w", err)
 					}
 					rep.Issues = append(rep.Issues, issues...)
+					if secretGitHistory {
+						histIssues, err := secret.ScanGitHistory(cmd.Context(), root, extraSecretRules)
+						if err != nil {
+							return fmt.Errorf("scanning git history for secrets: %w", err)
+						}
+						rep.Issues = append(rep.Issues, histIssues...)
+					}
 				case "misconfig":
 					issues, err := misconfig.Scan(root)
 					if err != nil {
@@ -144,7 +163,7 @@ func fsCmd() *cobra.Command {
 					{"gl-dependency-scanning-report.json", func(w io.Writer) error { return rep.GitLabDependencyScanning(w, root, Version) }},
 					{"gl-sast-report.json", func(w io.Writer) error { return rep.GitLabSAST(w, root, Version) }},
 					{"gl-secret-detection-report.json", func(w io.Writer) error { return rep.GitLabSecretDetection(w, root, Version) }},
-					{"gl-sbom-report.cdx.json", func(w io.Writer) error { return report.SBOM(w, pkgs) }},
+					{"gl-sbom-report.cdx.json", func(w io.Writer) error { return report.SBOM(w, pkgs, sbomVersion) }},
 				}
 				for _, f := range files {
 					out, err := os.Create(f.name)
@@ -186,5 +205,8 @@ func fsCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&gitlab, "gitlab", "g", false, "write GitLab-compatible security reports (gl-dependency-scanning-report.json, gl-sast-report.json, gl-secret-detection-report.json, gl-sbom-report.cdx.json) instead of -f/--format output; runs all scanners")
 	cmd.Flags().StringVar(&rulesDir, "rules-dir", "", "directory of custom *.yaml SAST rules (default: <path>/.ojo/rules, if present); runs alongside --scanners sast")
 	cmd.Flags().StringVar(&ignoreFile, "ignore-file", "", "path to a .ojoignore file (default: .ojoignore in the current directory, if present)")
+	cmd.Flags().StringVar(&cyclonedxVersion, "cyclonedx-version", "", "CycloneDX spec version for -f sbom output, e.g. 1.4 (default: latest)")
+	cmd.Flags().StringVar(&secretRulesFile, "secret-rules-file", "", "path to a YAML file of additional secret rules (same shape as the built-in rules), run alongside --scanners secret")
+	cmd.Flags().BoolVar(&secretGitHistory, "secret-git-history", false, "also scan git commit history (current branch) for secrets that were committed and later removed; requires root to be a git repository")
 	return cmd
 }
