@@ -15,7 +15,6 @@ import (
 	"github.com/colibrisec/ojo/internal/ignore"
 	"github.com/colibrisec/ojo/internal/manifest"
 	"github.com/colibrisec/ojo/internal/misconfig"
-	"github.com/colibrisec/ojo/internal/osv"
 	"github.com/colibrisec/ojo/internal/quality"
 	"github.com/colibrisec/ojo/internal/report"
 	"github.com/colibrisec/ojo/internal/sast"
@@ -106,7 +105,7 @@ func fsCmd() *cobra.Command {
 					if err != nil {
 						return fmt.Errorf("discovering manifests: %w", err)
 					}
-					findings, err := osv.Scan(cmd.Context(), pkgs)
+					findings, err := osvScan(cmd.Context(), pkgs)
 					if err != nil {
 						return fmt.Errorf("querying OSV: %w", err)
 					}

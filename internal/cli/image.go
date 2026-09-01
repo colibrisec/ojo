@@ -8,8 +8,6 @@ import (
 
 	"github.com/colibrisec/ojo/internal/config"
 	"github.com/colibrisec/ojo/internal/ignore"
-	"github.com/colibrisec/ojo/internal/image"
-	"github.com/colibrisec/ojo/internal/osv"
 	"github.com/colibrisec/ojo/internal/report"
 	"github.com/colibrisec/ojo/internal/vex"
 )
@@ -41,7 +39,7 @@ func imageCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			pkgs, osLabel, err := image.Scan(cmd.Context(), ref, platform)
+			pkgs, osLabel, err := imageScan(cmd.Context(), ref, platform)
 			if err != nil {
 				return err
 			}
@@ -54,7 +52,7 @@ func imageCmd() *cobra.Command {
 				return report.SBOM(cmd.OutOrStdout(), pkgs, sbomVersion)
 			}
 
-			findings, err := osv.Scan(cmd.Context(), pkgs)
+			findings, err := osvScan(cmd.Context(), pkgs)
 			if err != nil {
 				return fmt.Errorf("querying OSV: %w", err)
 			}
