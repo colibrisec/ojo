@@ -45,7 +45,11 @@ func Table(w io.Writer, root string, findings []model.Finding) {
 		if r.vuln.URL != "" {
 			title += "\n" + r.vuln.URL
 		}
-		rows[i] = []string{r.pkg.Name, r.vuln.ID, r.vuln.Severity, "affected", r.pkg.Version, r.vuln.FixedVersion, title}
+		id := r.vuln.ID
+		if r.vuln.KEV {
+			id += "\n[KEV: exploited in the wild]"
+		}
+		rows[i] = []string{r.pkg.Name, id, r.vuln.Severity, "affected", r.pkg.Version, r.vuln.FixedVersion, title}
 	}
 	mergeRuns(rows, []int{0, 2, 3, 4})
 
@@ -212,7 +216,7 @@ func SBOM(w io.Writer, pkgs []model.Package, version cdx.SpecVersion) error {
 			Type:       cdx.ComponentTypeLibrary,
 			Name:       p.Name,
 			Version:    p.Version,
-			PackageURL: purl(p),
+			PackageURL: Purl(p),
 		})
 	}
 	bom.Components = &components
@@ -222,7 +226,10 @@ func SBOM(w io.Writer, pkgs []model.Package, version cdx.SpecVersion) error {
 	return enc.EncodeVersion(bom, version)
 }
 
-func purl(p model.Package) string {
+// Purl returns a package-url (https://github.com/package-url/purl-spec)
+// identifier for p. Used for SBOM component identity and (internal/vex) to
+// match a finding's package against a VEX statement's product.
+func Purl(p model.Package) string {
 	switch p.Ecosystem {
 	case model.EcosystemGo:
 		return fmt.Sprintf("pkg:golang/%s@%s", p.Name, p.Version)
