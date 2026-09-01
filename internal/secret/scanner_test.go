@@ -15,7 +15,7 @@ func TestScan(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	issues, err := Scan(dir)
+	issues, err := Scan(dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestScan_KeyLabelDoesNotShadowLaterSecretOnSameLine(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	issues, err := Scan(dir)
+	issues, err := Scan(dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestScan_TestFileExclusion(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		issues, err := Scan(dir)
+		issues, err := Scan(dir, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -81,7 +81,7 @@ func TestScan_TestFileExclusion(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		issues, err := Scan(dir)
+		issues, err := Scan(dir, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -98,7 +98,7 @@ func TestScan_SkipsNonConfigFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	issues, err := Scan(dir)
+	issues, err := Scan(dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

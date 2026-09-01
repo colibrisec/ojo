@@ -52,12 +52,15 @@ Usage:
   ojo fs [path] [flags]
 
 Flags:
-      --config string        path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)
-  -f, --format string        output format: table, json, sbom, sarif (default "table")
-  -g, --gitlab               write GitLab-compatible security reports instead of -f/--format output; runs all scanners
-      --ignore-file string   path to a .ojoignore file (default: .ojoignore in the current directory, if present)
-      --rules-dir string     directory of custom *.yaml SAST rules (default: <path>/.ojo/rules, if present); runs alongside --scanners sast
-      --scanners string      comma-separated scanners to run: vuln, secret, misconfig, sast, quality (default "vuln")
+      --config string              path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)
+      --cyclonedx-version string   CycloneDX spec version for -f sbom output, e.g. 1.4 (default: latest)
+  -f, --format string              output format: table, json, sbom, sarif (default "table")
+  -g, --gitlab                     write GitLab-compatible security reports instead of -f/--format output; runs all scanners
+      --ignore-file string         path to a .ojoignore file (default: .ojoignore in the current directory, if present)
+      --rules-dir string           directory of custom *.yaml SAST rules (default: <path>/.ojo/rules, if present); runs alongside --scanners sast
+      --scanners string            comma-separated scanners to run: vuln, secret, misconfig, sast, quality (default "vuln")
+      --secret-git-history         also scan git commit history (current branch) for secrets that were committed and later removed; requires root to be a git repository
+      --secret-rules-file string   path to a YAML file of additional secret rules (same shape as the built-in rules), run alongside --scanners secret
 ```
 
 `path` defaults to `.` (the current directory) if omitted.
@@ -69,6 +72,14 @@ Maintainability smells (complexity, length, nesting, parameter count, duplicate 
 ### `--rules-dir`
 
 Loads user-authored SAST rules from `--rules-dir` (default `<path>/.ojo/rules`) and runs them alongside the built-in rules whenever `sast` is in `--scanners`. See [SAST scanner: Custom rules](../guide/scanner/sast.md#custom-rules) for the YAML format.
+
+### `--secret-rules-file`
+
+Loads additional secret rules from a YAML file — the same `rules: [...]` shape as the built-in rules (`id`/`description`/`regex`/`keywords`/`minEntropy`/`severity`) — and runs them alongside the built-in rules whenever `secret` is in `--scanners`. A custom rule `id` colliding with a built-in one is a load error.
+
+### `--secret-git-history`
+
+Also scans `git log -p` on the current branch for secrets, so one that was committed and later deleted from the working tree is still caught. Requires `path` to be a git repository. Off by default (can be slow on a repo with a long history); one finding per commit a secret was added in, not deduplicated.
 
 ### `--ignore-file`
 
@@ -92,9 +103,11 @@ Usage:
   ojo image [ref] [flags]
 
 Flags:
-      --config string        path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)
-  -f, --format string        output format: table, json, sbom, sarif (default "table")
-      --ignore-file string   path to a .ojoignore file (default: .ojoignore in the current directory, if present)
+      --config string              path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)
+      --cyclonedx-version string   CycloneDX spec version for -f sbom output, e.g. 1.4 (default: latest)
+  -f, --format string              output format: table, json, sbom, sarif (default "table")
+      --ignore-file string         path to a .ojoignore file (default: .ojoignore in the current directory, if present)
+      --platform string            image platform to pull as os/arch, e.g. linux/arm64 (default: linux/amd64)
 ```
 
 `ref` is required — any reference `docker pull` would accept (`nginx:1.25`, `myregistry.example.com/app:latest`, `python@sha256:...`).
