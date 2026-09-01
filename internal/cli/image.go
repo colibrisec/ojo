@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -101,7 +100,7 @@ func imageCmd() *cobra.Command {
 			}
 
 			if len(findings) > 0 {
-				os.Exit(1)
+				return ErrFindingsFound
 			}
 			return nil
 		},
