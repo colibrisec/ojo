@@ -48,6 +48,25 @@ func tsFindTODOs(n *gts.Node, lang *gts.Language, src []byte, path string, isCom
 	}
 }
 
+func isPlainComment(t string) bool { return t == "comment" }
+func isJavaComment(t string) bool  { return javaCommentTypes[t] }
+
+// scanTSFileTODOs reads and parses one file with the given grammar and
+// appends any TODO/FIXME/HACK/XXX comment findings to *issues — the one
+// read+parse+skip-on-error block shared by all five tree-sitter-backed
+// languages below, instead of five copies of it.
+func scanTSFileTODOs(path string, lang *gts.Language, isComment func(string) bool, issues *[]model.Issue) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	tree, err := gts.NewParser(lang).Parse(src)
+	if err != nil {
+		return
+	}
+	tsFindTODOs(tree.RootNode(), lang, src, path, isComment, issues)
+}
+
 func scanTODOComments(root string) ([]model.Issue, error) {
 	var issues []model.Issue
 	err := walk.Walk(root, func(path string, d fs.DirEntry) error {
@@ -66,56 +85,16 @@ func scanTODOComments(root string) ([]model.Issue, error) {
 				}
 			}
 		case strings.HasSuffix(path, ".py"):
-			src, err := os.ReadFile(path)
-			if err != nil {
-				return nil
-			}
-			tree, err := gts.NewParser(pyLang).Parse(src)
-			if err != nil {
-				return nil
-			}
-			tsFindTODOs(tree.RootNode(), pyLang, src, path, func(t string) bool { return t == "comment" }, &issues)
+			scanTSFileTODOs(path, pyLang, isPlainComment, &issues)
 		case strings.HasSuffix(path, ".php"):
-			src, err := os.ReadFile(path)
-			if err != nil {
-				return nil
-			}
-			tree, err := gts.NewParser(phpLang).Parse(src)
-			if err != nil {
-				return nil
-			}
-			tsFindTODOs(tree.RootNode(), phpLang, src, path, func(t string) bool { return t == "comment" }, &issues)
+			scanTSFileTODOs(path, phpLang, isPlainComment, &issues)
 		case strings.HasSuffix(path, ".rb"):
-			src, err := os.ReadFile(path)
-			if err != nil {
-				return nil
-			}
-			tree, err := gts.NewParser(rubyLang).Parse(src)
-			if err != nil {
-				return nil
-			}
-			tsFindTODOs(tree.RootNode(), rubyLang, src, path, func(t string) bool { return t == "comment" }, &issues)
+			scanTSFileTODOs(path, rubyLang, isPlainComment, &issues)
 		case strings.HasSuffix(path, ".java"):
-			src, err := os.ReadFile(path)
-			if err != nil {
-				return nil
-			}
-			tree, err := gts.NewParser(javaLang).Parse(src)
-			if err != nil {
-				return nil
-			}
-			tsFindTODOs(tree.RootNode(), javaLang, src, path, func(t string) bool { return javaCommentTypes[t] }, &issues)
+			scanTSFileTODOs(path, javaLang, isJavaComment, &issues)
 		default:
 			if lang := jsLangForPath(path); lang != nil {
-				src, err := os.ReadFile(path)
-				if err != nil {
-					return nil
-				}
-				tree, err := gts.NewParser(lang).Parse(src)
-				if err != nil {
-					return nil
-				}
-				tsFindTODOs(tree.RootNode(), lang, src, path, func(t string) bool { return t == "comment" }, &issues)
+				scanTSFileTODOs(path, lang, isPlainComment, &issues)
 			}
 		}
 		return nil
