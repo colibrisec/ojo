@@ -227,3 +227,204 @@ func TestJavaTaintTrackingThroughLocalVariable(t *testing.T) {
 		}
 	}
 }
+
+// Same-file interprocedural taint tracking: a sink inside a helper
+// function whose own body has no dynamic-string-building and no
+// request/params-rooted expression at all — the parameter is just a plain
+// name. Only same-file interprocedural tracking (the helper is called with
+// a request-derived argument at one call site, and only a literal at
+// another) can tell these two call sites apart.
+
+const pyInterprocFixture = `def run_query(q):
+    cursor.execute(q)
+
+def handler(request):
+    run_query(request.args.get("x"))
+
+def safe_handler():
+    run_query("SELECT * FROM t")
+`
+
+func TestPythonInterproceduralSinkInsideCallee(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "interproc.py"), []byte(pyInterprocFixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, i := range issues {
+		if i.RuleID == "py-sql-injection" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 py-sql-injection issue (run_query's cursor.execute(q) via the tainted call in handler, not the literal-only call in safe_handler), got %d: %+v", count, issues)
+	}
+}
+
+// pyInterprocFewerArgsThanParams exercises a call site with fewer
+// arguments than the callee declares parameters — tsArgAt must skip the
+// missing position rather than panicking or misaligning the rest.
+const pyInterprocFewerArgsThanParams = `def run_query(db, q):
+    db.execute(q)
+
+def handler(db):
+    run_query(db)
+`
+
+func TestPythonInterproceduralFewerArgsThanParamsDoesNotPanic(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "fewerargs.py"), []byte(pyInterprocFewerArgsThanParams), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, i := range issues {
+		if i.RuleID == "py-sql-injection" {
+			t.Errorf("expected no py-sql-injection issue: run_query is never called with a tainted argument here, got: %+v", issues)
+		}
+	}
+}
+
+const jsInterprocFixture = `function runQuery(q) {
+  db.query(q);
+}
+
+function handler(req, res) {
+  runQuery(req.query.x);
+}
+
+function safeHandler() {
+  runQuery("SELECT * FROM t");
+}
+`
+
+func TestJSInterproceduralSinkInsideCallee(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "interproc.js"), []byte(jsInterprocFixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, i := range issues {
+		if i.RuleID == "js-sql-injection" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 js-sql-injection issue (runQuery's db.query(q) via the tainted call in handler, not the literal-only call in safeHandler), got %d: %+v", count, issues)
+	}
+}
+
+const phpInterprocFixture = `<?php
+function run_query($db, $q) {
+    $db->query($q);
+}
+
+function handler($db) {
+    run_query($db, $_GET['x']);
+}
+
+function safe_handler($db) {
+    run_query($db, "SELECT * FROM t");
+}
+`
+
+func TestPHPInterproceduralSinkInsideCallee(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "interproc.php"), []byte(phpInterprocFixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, i := range issues {
+		if i.RuleID == "php-sql-injection" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 php-sql-injection issue (run_query's $db->query($q) via the tainted call in handler, not the literal-only call in safe_handler), got %d: %+v", count, issues)
+	}
+}
+
+const rubyInterprocFixture = `def run_query(q)
+  Model.where(q)
+end
+
+def handler(params)
+  run_query(params[:x])
+end
+
+def safe_handler
+  run_query("SELECT * FROM t")
+end
+`
+
+func TestRubyInterproceduralSinkInsideCallee(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "interproc.rb"), []byte(rubyInterprocFixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, i := range issues {
+		if i.RuleID == "ruby-sql-injection" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 ruby-sql-injection issue (run_query's Model.where(q) via the tainted call in handler, not the literal-only call in safe_handler), got %d: %+v", count, issues)
+	}
+}
+
+const javaInterprocFixture = `import javax.servlet.http.*;
+import java.sql.*;
+
+class Handler {
+	void runQuery(String q, Statement st) throws SQLException {
+		st.executeQuery(q);
+	}
+
+	void handler(HttpServletRequest request, Statement st) throws SQLException {
+		runQuery(request.getParameter("x"), st);
+	}
+
+	void safeHandler(Statement st) throws SQLException {
+		runQuery("SELECT * FROM t", st);
+	}
+}
+`
+
+func TestJavaInterproceduralSinkInsideCallee(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Interproc.java"), []byte(javaInterprocFixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, i := range issues {
+		if i.RuleID == "java-sql-injection" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 java-sql-injection issue (runQuery's st.executeQuery(q) via the tainted call in handler, not the literal-only call in safeHandler), got %d: %+v", count, issues)
+	}
+}

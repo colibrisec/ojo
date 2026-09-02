@@ -233,6 +233,11 @@ func checkRubyInsecureDeserialization(root *gts.Node, src []byte, path string) [
 var (
 	rubyRandCallQuery  = mustRubyQuery(`(call method: (identifier) @m (#eq? @m "rand")) @call`)
 	rubyMethodDefQuery = mustRubyQuery(`(method name: (identifier) @fname body: (body_statement) @body) @def`)
+	// rubyFreeCallQuery captures an optional "recv" field precisely so a
+	// receiver-qualified call (obj.foo(x)) can be filtered out in Go code —
+	// Ruby's "call" node type is shared between free calls and
+	// receiver-qualified ones, verified directly before relying on this.
+	rubyFreeCallQuery = mustRubyQuery(`(call receiver: (_)? @recv method: (identifier) @fn arguments: (argument_list) @args) @call`)
 )
 
 func checkRubyInsecureRandom(root *gts.Node, src []byte, path string) []model.Issue {

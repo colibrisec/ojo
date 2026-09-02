@@ -196,6 +196,12 @@ func checkJavaInsecureDeserialization(root *gts.Node, src []byte, path string) [
 var (
 	javaRandomNewQuery = mustJavaQuery(`(object_creation_expression type: (type_identifier) @t (#eq? @t "Random")) @call`)
 	javaMethodDefQuery = mustJavaQuery(`(method_declaration name: (identifier) @fname body: (block) @body) @def`)
+	// javaFreeCallQuery captures an optional "recv" field precisely so a
+	// qualified call (obj.foo(x)/this.foo(x)) can be filtered out in Go
+	// code — Java's "method_invocation" node type is shared between
+	// unqualified same-class calls and qualified ones, verified directly
+	// before relying on this.
+	javaFreeCallQuery = mustJavaQuery(`(method_invocation object: (_)? @recv name: (identifier) @fn arguments: (argument_list) @args) @call`)
 )
 
 func checkJavaInsecureRandom(root *gts.Node, src []byte, path string) []model.Issue {

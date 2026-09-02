@@ -1,5 +1,7 @@
 # Scanner: Code Quality
 
+> Rule counts and behavior below reflect the current `main` branch, which moves faster than tagged releases. See [GitHub Releases](https://github.com/colibrisec/ojo/releases) for what's actually included in the version you're running.
+
 Maintainability smells, not vulnerabilities: cyclomatic complexity, function length, nesting depth, parameter count, cross-file duplicate code, and tracked TODO/FIXME comments. Covers Go, Python, JavaScript/TypeScript, PHP, Ruby, and Java.
 
 Off by default — enable with `--scanners quality`.
