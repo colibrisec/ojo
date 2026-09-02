@@ -4,6 +4,10 @@ Static analysis over Go, Python, JavaScript/TypeScript, PHP, Ruby, and Java sour
 
 Off by default — enable with `--scanners sast`.
 
+## Rule categories: Vulnerability vs. Bug
+
+Every rule up through the previous round was security-shaped: a suspicious sink, a dangerous API, tainted input reaching one — SonarQube's "Vulnerability" category. This round added ojo's first "Bug"/reliability rules — `*-empty-exception-handler`, `*-empty-block`, `*-unreachable-code` — plain correctness issues with no security angle at all (a silently-swallowed exception, dead code after a `return`). They're not a separate scanner or `--scanners` value: they run as part of `sast` alongside everything else, distinguishable only by rule ID and by reading the rule tables below — ojo's `model.Issue` has no `Category`/`Type` field to filter on yet, since nothing downstream (report formats, `--exit-code`) needed that distinction before now. Add one if a consumer actually needs to filter Bug from Vulnerability findings; don't add it speculatively.
+
 ## Custom rules
 
 Write your own rules without touching ojo's source, in YAML, one rule per `.yaml`/`.yml` file:
@@ -43,7 +47,7 @@ Rules are compiled tree-sitter queries (`internal/sast/python.go`, `internal/sas
 
 Other languages are still out of scope — revisit per-language the same way Python, JS/TS, PHP, Ruby, and Java were: check what a candidate parser actually handles before committing.
 
-## Built-in rules — Go (18)
+## Built-in rules — Go (19)
 
 | Rule | Severity | Detects |
 |---|---|---|
@@ -64,9 +68,10 @@ Other languages are still out of scope — revisit per-language the same way Pyt
 | `go-cookie-missing-flags` | LOW | `http.Cookie{...}` that never sets `Secure` or `HttpOnly` at all |
 | `go-ssti` | HIGH | `text/template`/`html/template`'s `New(...).Parse(...)` chain with a template-source argument built via `fmt.Sprintf`/concatenation, or (intraprocedural taint tracking) a local variable derived from request/env input |
 | `go-predictable-prng-seed` | MEDIUM | `math/rand`'s `Seed(...)`/`NewSource(...)` called with a compile-time integer literal |
+| `go-empty-block` | LOW | An `if`/`else`/`for`/`for-range` body with no statements at all (Bug, not Vulnerability — see above) |
 | `go-ssrf` | HIGH | `net/http`'s `Get`/`Post`/`Head`/`PostForm`/`NewRequest`/`NewRequestWithContext` with a URL built via `fmt.Sprintf`/concatenation, or (intraprocedural taint tracking) a local variable derived from request/env input, instead of a validated/allowlisted URL |
 
-## Built-in rules — Python (26)
+## Built-in rules — Python (28)
 
 | Rule | Severity | Detects |
 |---|---|---|
@@ -96,8 +101,10 @@ Other languages are still out of scope — revisit per-language the same way Pyt
 | `py-unsafe-reflection` | HIGH | `importlib.import_module(...)` with a module-name argument that is itself (directly, or through a local variable — taint tracking) request/env-derived |
 | `py-predictable-prng-seed` | MEDIUM | `random.seed(...)` called with a compile-time integer literal |
 | `py-agent-unsandboxed-exec` | HIGH | `.run(...)`/`.arun(...)` on a LangChain/AutoGen/CrewAI-style tool (`PythonREPLTool`, `ShellTool`, `BashProcess`, `CodeInterpreterTool`, `LocalCommandLineCodeExecutor`) with an argument built from f-string/%/concatenation, or (taint tracking) derived from request/env input — matched by class name whether constructed inline or through a tracked local variable |
+| `py-empty-exception-handler` | MEDIUM | A bare `except: pass`/`except X: pass` — the entire body is one `pass` statement (Bug, not Vulnerability — see above) |
+| `py-unreachable-code` | LOW | A statement immediately following a `return`/`raise`/`break`/`continue` in the same block (Bug, not Vulnerability — see above) |
 
-## Built-in rules — JavaScript / TypeScript / TSX (21)
+## Built-in rules — JavaScript / TypeScript / TSX (24)
 
 Applies to `.js`/`.jsx`/`.mjs`/`.cjs` (javascript grammar), `.ts`/`.mts`/`.cts` (typescript grammar), and `.tsx` (tsx grammar). `js-react-dangerously-set-innerhtml` only runs against the js/tsx grammars — plain TypeScript can't contain JSX.
 
@@ -123,9 +130,12 @@ Applies to `.js`/`.jsx`/`.mjs`/`.cjs` (javascript grammar), `.ts`/`.mts`/`.cts` 
 | `js-ssti` | HIGH | `ejs.render(...)`/`ejs.compile(...)` with a template-source argument derived from request/env input (directly, or through a local variable — taint tracking) or built via template-literal interpolation/concatenation |
 | `js-nosqli` | HIGH | Mongoose/MongoDB `find`/`findOne`/`findOneAndUpdate`/`findOneAndDelete`/`updateOne`/`updateMany`/`deleteOne`/`deleteMany` with a filter argument that is itself (directly, or through a local variable — taint tracking) request/env-derived, rather than a literal filter with individually-typed fields |
 | `js-unsafe-reflection` | HIGH | `require(...)` with a module-specifier argument that is itself (directly, or through a local variable — taint tracking) request/env-derived |
+| `js-empty-exception-handler` | MEDIUM | An empty `catch { }` block (Bug, not Vulnerability — see above) |
+| `js-empty-block` | LOW | An `if`/`else`/`while`/`for` body with no statements at all (Bug, not Vulnerability — see above) |
+| `js-unreachable-code` | LOW | A statement immediately following a `return`/`throw`/`break`/`continue` in the same block (Bug, not Vulnerability — see above) |
 | `js-ssrf` | HIGH | `fetch(...)` or `axios.get/post/put/delete(...)` with a URL derived from request/env input (directly, or through a local variable — taint tracking) or built via template-literal interpolation/concatenation |
 
-## Built-in rules — PHP (22)
+## Built-in rules — PHP (25)
 
 | Rule | Severity | Detects |
 |---|---|---|
@@ -151,8 +161,11 @@ Applies to `.js`/`.jsx`/`.mjs`/`.cjs` (javascript grammar), `.ts`/`.mts`/`.cts` 
 | `php-unsafe-reflection` | HIGH | `call_user_func(...)`/`call_user_func_array(...)` with a callback argument that is itself (directly, or through a local variable — taint tracking) a superglobal/env-derived value |
 | `php-predictable-prng-seed` | MEDIUM | `srand(...)`/`mt_srand(...)` called with a compile-time integer literal |
 | `php-mass-assignment` | MEDIUM | Laravel `Model::create($request->all())`, or `->fill(...)`/`->update(...)`/`->forceFill(...)` called directly on `$request->all()` |
+| `php-empty-exception-handler` | MEDIUM | An empty `catch { }` block (Bug, not Vulnerability — see above) |
+| `php-empty-block` | LOW | An `if`/`else`/`while`/`for` body with no statements at all (Bug, not Vulnerability — see above) |
+| `php-unreachable-code` | LOW | A statement immediately following a `throw`/`return`/`break`/`continue` in the same block (Bug, not Vulnerability — see above) |
 
-## Built-in rules — Ruby (21)
+## Built-in rules — Ruby (24)
 
 | Rule | Severity | Detects |
 |---|---|---|
@@ -177,8 +190,11 @@ Applies to `.js`/`.jsx`/`.mjs`/`.cjs` (javascript grammar), `.ts`/`.mts`/`.cts` 
 | `ruby-ssti` | HIGH | `ERB.new(...)` with a template-source argument derived from params/env input (directly, or through a local variable — taint tracking) or built via interpolation/concatenation |
 | `ruby-unsafe-reflection` | HIGH | `send`/`public_send`/`__send__` with a method-name argument that is itself (directly, or through a local variable — taint tracking) params/env-derived (a literal symbol, `obj.send(:foo)`, is not flagged) |
 | `ruby-predictable-prng-seed` | MEDIUM | `srand(...)` called with a compile-time integer literal |
+| `ruby-empty-exception-handler` | MEDIUM | A `rescue`/`rescue => e` clause with no body at all (Bug, not Vulnerability — see above) |
+| `ruby-empty-block` | LOW | An `if`/`else`/`while` body with no statements at all (Bug, not Vulnerability — see above) |
+| `ruby-unreachable-code` | LOW | A statement immediately following a `return`/`break`/`next` in the same `then`/method body (Bug, not Vulnerability — see above) |
 
-## Built-in rules — Java (20)
+## Built-in rules — Java (23)
 
 | Rule | Severity | Detects |
 |---|---|---|
@@ -202,6 +218,9 @@ Applies to `.js`/`.jsx`/`.mjs`/`.cjs` (javascript grammar), `.ts`/`.mts`/`.cts` 
 | `java-unsafe-reflection` | HIGH | `Class.forName(...)` with a class-name argument that is itself (directly, or through a local variable — taint tracking) request/env-derived |
 | `java-predictable-prng-seed` | MEDIUM | `new Random(...)` called with a compile-time integer literal |
 | `java-jwt-none-algorithm` | HIGH | `Algorithm.none()` (auth0 java-jwt), or `SignatureAlgorithm.NONE` (jjwt) used at all |
+| `java-empty-exception-handler` | MEDIUM | An empty `catch (...) { }` block (Bug, not Vulnerability — see above) |
+| `java-empty-block` | LOW | An `if`/`else`/`while`/`for` body with no statements at all (Bug, not Vulnerability — see above) |
+| `java-unreachable-code` | LOW | A statement immediately following a `return`/`throw`/`break`/`continue` in the same block (Bug, not Vulnerability — see above) |
 
 ## Honest ceiling
 
@@ -248,5 +267,9 @@ This is a curated, query-based linter, not a Semgrep replacement — yet. Specif
 - **`js-yaml-unsafe-load` flags `yaml.load(...)`/`YAML.load(...)` with no `schema:` option, and that's a real version caveat, not silently overstated.** js-yaml v4 (2021+) made `load()` safe by default and removed the vulnerable types entirely, so this rule's signal is strongest against the still-widely-deployed js-yaml v3 and earlier; ojo has no lockfile-version check, so it can't tell which major version a given `yaml.load(...)` call site is actually running against. An explicit `schema:` option is treated as a deliberate choice either way and skipped, same false-positive-avoidance shape as `java-yaml-unsafe-load`'s zero-constructor-arg check. Ruby's equivalent isn't a separate rule: `YAML.load(...)` (as opposed to `.safe_load`) is already covered under `ruby-insecure-deserialization`, filed there because Ruby's Marshal/YAML unsafe-load sinks share the exact same "arbitrary object construction from untrusted input" shape and message.
 - **`php-mass-assignment` requires the argument to be a direct `->all()` call, not any tainted value.** `Model::create($request->all())`/`->fill($request->all())`/`->update($request->all())`/`->forceFill($request->all())` match; a real allowlist (`$request->only([...])`) or a filtered array built some other way doesn't, by construction — same "whole-argument shape, not per-key taint" precedent as the NoSQLi rules. No import/type verification that `$request` is actually an Illuminate `Request` or that the receiver is actually an Eloquent model — same "flag the candidate" tradeoff as `ruby-mass-assignment`'s `params.permit!`.
 - **`java-jwt-none-algorithm` matches two specific named APIs (`Algorithm.none()`, `SignatureAlgorithm.NONE`), not every Java JWT library's equivalent.** Covers the two dominant libraries (auth0 java-jwt, jjwt); a different library's own "no signature" constant or factory method wouldn't match — same per-library naming ceiling `go-jwt-none-algorithm` already documents for `jwt.SigningMethodNone`.
+
+- **`*-empty-exception-handler` (all six languages) flags structure only, no semantic "is this actually safe to ignore" judgment.** An empty `catch`/`rescue`/`except: pass` is flagged unconditionally — the same rule that fires on a genuine swallowed failure also fires on a deliberate, documented "this specific exception is known-safe to ignore" case; there's no way to distinguish intent from a parse tree alone. This is the same tradeoff Bandit's B110 (`except: pass`) and RuboCop's `Lint/SuppressedException` already ship with, not a gap unique to ojo. Python's version is structurally different from the other five: Python has no way to write a truly empty suite (every block needs at least one statement), so the signal is a body that's *exactly* one `pass` and nothing else, not zero statements — a `except: log_and_ignore()` body doesn't match, by construction.
+- **`*-empty-block` (Go/Java/JS/PHP/Ruby, not Python) flags an if/else/while/for body with zero statements — SonarQube's S108.** Python is deliberately excluded from this one specific rule (it does get `py-empty-exception-handler` above): Python can't express an empty block without an explicit `pass`, and unlike the exception-handler case, a `pass`-only `if`/`for`/`while` body has too many ordinary, non-buggy uses (a placeholder while writing code, a deliberate busy-wait loop) to flag with acceptable precision — the same reasoning that keeps this rule off function/method bodies in every language (an empty method is a completely normal stub/interface implementation). Ruby's version covers `if`/`else`/`while` only, not `unless`/`until`/`for` — same "core forms first" scoping precedent as the cyclomatic-complexity decision-point table in the [quality scanner](quality.md) docs, revisit if this proves to matter.
+- **`*-unreachable-code` (Python/JS/TS/TSX/PHP/Ruby/Java, not Go) flags the first statement after a terminal statement (`return`/`throw`/`raise`/`break`/`continue`) in the same block — SonarQube's S1763.** Go is deliberately excluded: `go vet`'s own `unreachable` analyzer already covers this exact case natively, and any real Go CI already runs `go vet ./...` — duplicating it here would just be a strictly worse copy of a check the toolchain already ships for free. PHP's grammar represents `throw` as an `expression_statement` wrapping a `throw_expression`, not its own statement type the way Java/JS/Python do — verified against a real parse tree before writing that query, not assumed from the other four languages' shape. Ruby has no dedicated `raise` statement type at all (`raise`/`fail` are ordinary `Kernel` method calls, indistinguishable at the grammar level from any other call), so Ruby's version covers `return`/`break`/`next` only; and it only reasons about two container node types (`then` — an if/rescue body — and `body_statement` — a method or `do...end` block body), not `while`/`until`'s `do`-wrapped body, which needed its own verification pass and wasn't done this round. Every rule in this family only flags the statement immediately after the terminal one, not every statement following it, so one dead-code block produces one issue, not one per line.
 
 Rules that overlap with the [secret scanner](secret.md) (`go-hardcoded-secret`, `py-hardcoded-secret`, `js-hardcoded-secret`, `php-hardcoded-secret`, `ruby-hardcoded-secret`, `java-hardcoded-secret`) are intentional, not redundant: the secret scanner does line-level regex over raw text; these rules work on the actual parse tree, catching multi-line/formatted literals the regex misses and correctly ignoring matches inside comments or non-assignment string literals.

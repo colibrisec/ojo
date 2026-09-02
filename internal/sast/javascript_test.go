@@ -271,3 +271,40 @@ func TestJSScanFindsYAMLUnsafeLoad(t *testing.T) {
 		t.Errorf("expected 1 js-yaml-unsafe-load issue (the bare load, not the explicit-schema one), got %d: %+v", count, issues)
 	}
 }
+
+const jsReliabilityRules = `function a() {
+  try { f(); } catch (e) { }
+  try { f(); } catch (e) { log(e); }
+  if (x) { }
+  if (x) { } else { }
+  while (x) { }
+  for (let i=0;i<3;i++) { }
+  if (x) { return; y(); }
+}
+`
+
+func TestJSScanFindsReliabilityRules(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "reliability.js"), []byte(jsReliabilityRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	counts := map[string]int{}
+	for _, i := range issues {
+		counts[i.RuleID]++
+	}
+	if counts["js-empty-exception-handler"] != 1 {
+		t.Errorf("expected 1 js-empty-exception-handler issue (not the catch that logs), got %d: %+v", counts["js-empty-exception-handler"], issues)
+	}
+	if counts["js-empty-block"] != 5 {
+		t.Errorf("expected 5 js-empty-block issues (empty if, empty if+else=2, empty while, empty for), got %d: %+v", counts["js-empty-block"], issues)
+	}
+	if counts["js-unreachable-code"] != 1 {
+		t.Errorf("expected 1 js-unreachable-code issue, got %d: %+v", counts["js-unreachable-code"], issues)
+	}
+}
