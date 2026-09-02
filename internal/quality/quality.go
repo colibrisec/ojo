@@ -1,10 +1,11 @@
 // Package quality scans for maintainability smells — cyclomatic
-// complexity, function length, nesting depth, parameter count, and
-// cross-file duplicate code — across Go, Python, JS/TS, PHP, Ruby, and
-// Java. These are code-quality findings, not security ones: a different
-// problem shape from internal/sast, and deliberately independent of it —
-// no shared taint/query infrastructure, just its own small per-language
-// "what counts as a function" node-type sets. Off by default, enabled with
+// complexity, function length, nesting depth, parameter count,
+// cross-file duplicate code, and tracked TODO/FIXME comments — across
+// Go, Python, JS/TS, PHP, Ruby, and Java. These are code-quality
+// findings, not security ones: a different problem shape from
+// internal/sast, and deliberately independent of it — no shared
+// taint/query infrastructure, just its own small per-language "what
+// counts as a function" node-type sets. Off by default, enabled with
 // --scanners quality.
 package quality
 
@@ -92,6 +93,12 @@ func Scan(root string) ([]model.Issue, error) {
 		return nil, err
 	}
 	issues = append(issues, dupIssues...)
+
+	todoIssues, err := scanTODOComments(root)
+	if err != nil {
+		return nil, err
+	}
+	issues = append(issues, todoIssues...)
 
 	return issues, nil
 }
