@@ -223,3 +223,33 @@ func TestPythonScanFindsCookieMissingFlags(t *testing.T) {
 		t.Errorf("expected 2 py-cookie-missing-flags issues (secure + httponly missing on the first call only), got %d: %+v", count, issues)
 	}
 }
+
+const pyWeakCipherRules = `from Crypto.Cipher import DES, AES
+
+def enc(key, nonce):
+    c1 = DES.new(key, DES.MODE_ECB)
+    c2 = AES.new(key, AES.MODE_ECB)
+    c3 = AES.new(key, AES.MODE_GCM, nonce)
+`
+
+func TestPythonScanFindsWeakCipher(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "cipher.py"), []byte(pyWeakCipherRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count := 0
+	for _, i := range issues {
+		if i.RuleID == "py-weak-cipher" {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Errorf("expected 2 py-weak-cipher issues (DES.new reported once despite also being ECB, plus AES-ECB), got %d: %+v", count, issues)
+	}
+}

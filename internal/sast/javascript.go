@@ -60,12 +60,14 @@ var jsRules = []jsRule{
 	{"js-command-injection", "HIGH", checkJSCommandInjection},
 	{"js-sql-injection", "HIGH", checkJSSQLInjection},
 	{"js-weak-hash", "LOW", checkJSWeakHash},
+	{"js-weak-cipher", "MEDIUM", checkJSWeakCipher},
 	{"js-insecure-random-for-secrets", "INFO", checkJSInsecureRandom},
 	{"js-tls-verify-disabled", "HIGH", checkJSTLSVerifyDisabled},
 	{"js-dom-xss-innerhtml", "MEDIUM", checkJSDOMXSSInnerHTML},
 	{"js-react-dangerously-set-innerhtml", "MEDIUM", checkJSReactDangerouslySetInnerHTML},
 	{"js-open-redirect", "MEDIUM", checkJSOpenRedirect},
 	{"js-jwt-none-algorithm", "HIGH", checkJSJWTNoneAlgorithm},
+	{"js-yaml-unsafe-load", "MEDIUM", checkJSYAMLUnsafeLoad},
 	{"js-cors-wildcard", "MEDIUM", checkJSCORSWildcard},
 	{"js-insecure-cookie", "MEDIUM", checkJSInsecureCookie},
 	{"js-path-traversal", "HIGH", checkJSPathTraversal},
@@ -216,6 +218,29 @@ func checkJSWeakHash(root *gts.Node, lang *gts.Language, src []byte, path string
 		}
 		issues = append(issues, jsIssueAt("js-weak-hash", "LOW", path,
 			"Weak hash algorithm", "crypto.createHash('"+alg+"') is cryptographically broken; use 'sha256' or stronger",
+			caps["call"]))
+	}
+	return issues
+}
+
+var createCipherQuery = mustTriQuery(`(call_expression function: (member_expression object: (identifier) @obj property: (property_identifier) @fn) arguments: (arguments . (string) @alg) (#eq? @obj "crypto") (#any-of? @fn "createCipheriv" "createCipher" "createDecipheriv" "createDecipher")) @call`)
+
+// checkJSWeakCipher flags crypto.createCipher(iv)/createDecipher(iv) called
+// with a broken cipher (DES/RC4) or an insecure mode (ECB) — same
+// name-in-algorithm-string signal as java-weak-cipher, just against Node's
+// OpenSSL-style algorithm identifiers ("des-ede3-cbc", "rc4", "aes-128-ecb")
+// instead of Java's.
+func checkJSWeakCipher(root *gts.Node, lang *gts.Language, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range createCipherQuery.forLang(lang).ExecuteNode(root, lang, src) {
+		caps := jsCapMap(m)
+		alg := trimQuotes(string(caps["alg"].Text(src)))
+		upper := strings.ToUpper(alg)
+		if !strings.Contains(upper, "DES") && !strings.Contains(upper, "RC4") && !strings.Contains(upper, "ECB") {
+			continue
+		}
+		issues = append(issues, jsIssueAt("js-weak-cipher", "MEDIUM", path,
+			"Weak cipher or insecure mode", "crypto."+string(caps["fn"].Text(src))+"('"+alg+"', ...) uses a broken cipher or an insecure mode (ECB); use AES-GCM instead",
 			caps["call"]))
 	}
 	return issues
@@ -427,6 +452,50 @@ func checkJSJWTNoneAlgorithm(root *gts.Node, lang *gts.Language, src []byte, pat
 			caps["pair"]))
 	}
 	return issues
+}
+
+var jsYamlLoadQuery = mustTriQuery(`(call_expression function: (member_expression object: (identifier) @obj property: (property_identifier) @fn) arguments: (arguments . (_) @arg) @args (#any-of? @obj "yaml" "YAML") (#eq? @fn "load")) @call`)
+
+// checkJSYAMLUnsafeLoad flags js-yaml's load() with no options argument (or
+// one with no "schema" key) — versions before js-yaml v4 default to a schema
+// that can construct arbitrary JS types from untrusted YAML. An explicit
+// `schema:` option is treated as a deliberate choice (hardened or not) and
+// skipped, same false-positive-avoidance tradeoff as java-yaml-unsafe-load's
+// zero-constructor-arg check.
+func checkJSYAMLUnsafeLoad(root *gts.Node, lang *gts.Language, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range jsYamlLoadQuery.forLang(lang).ExecuteNode(root, lang, src) {
+		caps := jsCapMap(m)
+		if jsArgsHaveSchemaOption(caps["args"], lang, src) {
+			continue
+		}
+		issues = append(issues, jsIssueAt("js-yaml-unsafe-load", "MEDIUM", path,
+			"yaml.load without an explicit schema", string(caps["obj"].Text(src))+".load(...) without a restrictive `schema` option can construct arbitrary types from untrusted YAML on js-yaml versions before v4",
+			caps["call"]))
+	}
+	return issues
+}
+
+// jsArgsHaveSchemaOption reports whether an arguments node's second argument
+// is an object literal containing a "schema" key.
+func jsArgsHaveSchemaOption(args *gts.Node, lang *gts.Language, src []byte) bool {
+	if args == nil || args.NamedChildCount() < 2 {
+		return false
+	}
+	opts := args.NamedChild(1)
+	if opts.Type(lang) != "object" {
+		return false
+	}
+	for _, c := range opts.Children() {
+		if c.Type(lang) != "pair" {
+			continue
+		}
+		key := c.ChildByFieldName("key", lang)
+		if key != nil && string(key.Text(src)) == "schema" {
+			return true
+		}
+	}
+	return false
 }
 
 var corsHeaderCallQuery = mustTriQuery(`(call_expression function: (member_expression property: (property_identifier) @meth) arguments: (arguments . (string) @key . (string) @val) (#any-of? @meth "setHeader" "header")) @call`)
