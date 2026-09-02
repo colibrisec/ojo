@@ -243,3 +243,41 @@ func TestPHPScanFindsMassAssignment(t *testing.T) {
 		t.Errorf("expected 3 php-mass-assignment issues (create/fill/update via $request->all(), not the allowlisted or safe-array calls), got %d: %+v", count, issues)
 	}
 }
+
+const phpReliabilityRules = `<?php
+function a() {
+  try { f(); } catch (Exception $e) { }
+  try { f(); } catch (Exception $e) { log($e); }
+  if ($x) { }
+  if ($x) { } else { }
+  while ($x) { }
+  for ($i=0;$i<3;$i++) { }
+  if ($x) { return; y(); }
+}
+`
+
+func TestPHPScanFindsReliabilityRules(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "reliability.php"), []byte(phpReliabilityRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	counts := map[string]int{}
+	for _, i := range issues {
+		counts[i.RuleID]++
+	}
+	if counts["php-empty-exception-handler"] != 1 {
+		t.Errorf("expected 1 php-empty-exception-handler issue (not the catch that logs), got %d: %+v", counts["php-empty-exception-handler"], issues)
+	}
+	if counts["php-empty-block"] != 5 {
+		t.Errorf("expected 5 php-empty-block issues (empty if, empty if+else=2, empty while, empty for), got %d: %+v", counts["php-empty-block"], issues)
+	}
+	if counts["php-unreachable-code"] != 1 {
+		t.Errorf("expected 1 php-unreachable-code issue, got %d: %+v", counts["php-unreachable-code"], issues)
+	}
+}

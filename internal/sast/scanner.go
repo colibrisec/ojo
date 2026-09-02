@@ -49,6 +49,7 @@ var rules = []rule{
 	{"go-ssrf", "HIGH", checkSSRF},
 	{"go-ssti", "HIGH", checkSSTI},
 	{"go-predictable-prng-seed", "MEDIUM", checkPredictablePRNGSeed},
+	{"go-empty-block", "LOW", checkEmptyBlock},
 }
 
 // Scan walks root, parses every .go file, and runs the rule set against each.

@@ -52,6 +52,8 @@ var pyRules = []pyRule{
 	{"py-unsafe-reflection", "HIGH", checkPyUnsafeReflection},
 	{"py-predictable-prng-seed", "MEDIUM", checkPyPredictablePRNGSeed},
 	{"py-agent-unsandboxed-exec", "HIGH", checkPyAgentUnsandboxedExec},
+	{"py-empty-exception-handler", "MEDIUM", checkPyEmptyExceptionHandler},
+	{"py-unreachable-code", "LOW", checkPyUnreachableCode},
 }
 
 func pyIssueAt(id, severity, path, title, message string, n *gts.Node) model.Issue {
@@ -729,6 +731,48 @@ func checkPyAgentUnsandboxedExec(root *gts.Node, src []byte, path string) []mode
 			"Agent tool executes untrusted input with no sandbox",
 			string(obj.Text(src))+"."+string(caps["meth"].Text(src))+"(...) runs the argument as code/a shell command; it traces back to request/env input with no sandboxing or allowlist in between",
 			caps["call"]))
+	}
+	return issues
+}
+
+// checkPyEmptyExceptionHandler flags a bare `except: pass`/`except X: pass`
+// — Bandit's own B110 rule for exactly this shape, one of the most
+// well-established anti-pattern lints in the Python ecosystem. Python has
+// no syntax for a truly empty block (every suite needs at least one
+// statement), so the signal here is a body that's exactly one `pass` and
+// nothing else, not zero statements the way the other languages check.
+// A body containing anything besides a lone `pass` (even a comment-only
+// intent like `pass  # deliberately ignored`) doesn't change this: `pass`
+// is still the only statement, so it's still flagged — matches Bandit's
+// own behavior, not a gap.
+var pyExceptQuery = mustPyQuery(`(except_clause (block) @body) @ex`)
+
+func checkPyEmptyExceptionHandler(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range pyExceptQuery.ExecuteNode(root, pyLang, src) {
+		caps := capMap(m)
+		body := caps["body"]
+		if body.NamedChildCount() != 1 || body.NamedChild(0).Type(pyLang) != "pass_statement" {
+			continue
+		}
+		issues = append(issues, pyIssueAt("py-empty-exception-handler", "MEDIUM", path,
+			"Empty exception handler", "except: pass silently swallows the exception, hiding real failures; at minimum log it",
+			caps["ex"]))
+	}
+	return issues
+}
+
+// checkPyUnreachableCode flags a statement immediately following a
+// return/raise/break/continue in the same block — SonarQube's S1763.
+var pyUnreachableQuery = mustPyQuery(`(block [(return_statement) (raise_statement) (break_statement) (continue_statement)] @term . (_) @after)`)
+
+func checkPyUnreachableCode(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range pyUnreachableQuery.ExecuteNode(root, pyLang, src) {
+		caps := capMap(m)
+		issues = append(issues, pyIssueAt("py-unreachable-code", "LOW", path,
+			"Unreachable code", "this statement can never execute; it follows a "+string(caps["term"].Text(src))+" in the same block",
+			caps["after"]))
 	}
 	return issues
 }

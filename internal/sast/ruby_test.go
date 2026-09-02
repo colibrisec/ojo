@@ -247,3 +247,54 @@ func TestRubyScanFindsWeakCipher(t *testing.T) {
 		t.Errorf("expected 2 ruby-weak-cipher issues (DES + ECB, not the AES-GCM call), got %d: %+v", count, issues)
 	}
 }
+
+const rubyReliabilityRules = `
+def a(x)
+  begin
+    f()
+  rescue => e
+  end
+  begin
+    f()
+  rescue => e
+    log(e)
+  end
+  if x
+  end
+  if x
+  else
+  end
+  while x
+  end
+  if x
+    return
+    y()
+  end
+end
+`
+
+func TestRubyScanFindsReliabilityRules(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "reliability.rb"), []byte(rubyReliabilityRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	counts := map[string]int{}
+	for _, i := range issues {
+		counts[i.RuleID]++
+	}
+	if counts["ruby-empty-exception-handler"] != 1 {
+		t.Errorf("expected 1 ruby-empty-exception-handler issue (not the rescue that logs), got %d: %+v", counts["ruby-empty-exception-handler"], issues)
+	}
+	if counts["ruby-empty-block"] != 4 {
+		t.Errorf("expected 4 ruby-empty-block issues (2 empty ifs + 1 empty else + 1 empty while), got %d: %+v", counts["ruby-empty-block"], issues)
+	}
+	if counts["ruby-unreachable-code"] != 1 {
+		t.Errorf("expected 1 ruby-unreachable-code issue, got %d: %+v", counts["ruby-unreachable-code"], issues)
+	}
+}
