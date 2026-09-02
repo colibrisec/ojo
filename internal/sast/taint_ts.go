@@ -50,6 +50,13 @@ func tsEnclosingBody(n *gts.Node, lang *gts.Language, boundary map[string]bool) 
 // somewhere in body. assignInfo pulls (name, rhsExpr, ok) out of an
 // assignment-shaped node; exprTainted decides whether a given expression
 // evaluates from tainted input given the taint state built so far.
+//
+// Transparently seeded from tsCurrentParamSeed (see interproc.go) so every
+// existing call site — and every sink rule that goes through it — sees a
+// same-file interprocedurally-tainted parameter without any change of its
+// own: the seed is folded into env before the usual intraprocedural pass
+// runs, so a sink using that parameter directly behaves exactly as if the
+// parameter had been r/req-rooted to begin with.
 func tsTaintEnv(
 	body *gts.Node,
 	lang *gts.Language,
@@ -58,7 +65,27 @@ func tsTaintEnv(
 	assignInfo func(n *gts.Node, lang *gts.Language, src []byte) (name string, rhs *gts.Node, ok bool),
 	exprTainted func(n *gts.Node, lang *gts.Language, src []byte, env map[string]bool) bool,
 ) map[string]bool {
+	return tsTaintEnvWithSeed(body, lang, src, boundary, assignInfo, exprTainted, tsCurrentParamSeed[body])
+}
+
+// tsTaintEnvWithSeed is tsTaintEnv's actual implementation, taking an
+// explicit initial taint set instead of consulting the package-level
+// tsCurrentParamSeed — used by tsComputeParamSeed itself (interproc.go),
+// which needs to build each round's per-function env from its own
+// in-progress seed map, not the previous file's leftover global state.
+func tsTaintEnvWithSeed(
+	body *gts.Node,
+	lang *gts.Language,
+	src []byte,
+	boundary map[string]bool,
+	assignInfo func(n *gts.Node, lang *gts.Language, src []byte) (name string, rhs *gts.Node, ok bool),
+	exprTainted func(n *gts.Node, lang *gts.Language, src []byte, env map[string]bool) bool,
+	seed map[string]bool,
+) map[string]bool {
 	env := map[string]bool{}
+	for name := range seed {
+		env[name] = true
+	}
 	if body == nil {
 		return env
 	}

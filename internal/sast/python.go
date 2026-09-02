@@ -276,6 +276,7 @@ func checkPyYAMLUnsafeLoad(root *gts.Node, src []byte, path string) []model.Issu
 var (
 	randomCallQuery = mustPyQuery(`(call function: (attribute object: (identifier) @mod)  (#eq? @mod "random")) @call`)
 	funcDefQuery    = mustPyQuery(`(function_definition name: (identifier) @fname body: (block) @body) @def`)
+	pyFreeCallQuery = mustPyQuery(`(call function: (identifier) @fn arguments: (argument_list) @args) @call`)
 )
 
 func checkPyInsecureRandom(root *gts.Node, src []byte, path string) []model.Issue {

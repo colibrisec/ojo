@@ -252,6 +252,7 @@ func checkJSWeakCipher(root *gts.Node, lang *gts.Language, src []byte, path stri
 var (
 	mathRandomQuery = mustTriQuery(`(call_expression function: (member_expression object: (identifier) @obj property: (property_identifier) @fn) (#eq? @obj "Math") (#eq? @fn "random")) @call`)
 	jsFuncDeclQuery = mustTriQuery(`(function_declaration name: (identifier) @fname body: (statement_block) @body) @def`)
+	jsFreeCallQuery = mustTriQuery(`(call_expression function: (identifier) @fn arguments: (arguments) @args) @call`)
 )
 
 func checkJSInsecureRandom(root *gts.Node, lang *gts.Language, src []byte, path string) []model.Issue {
