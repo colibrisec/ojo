@@ -46,6 +46,9 @@ var javaRules = []javaRule{
 	{"java-unsafe-reflection", "HIGH", checkJavaUnsafeReflection},
 	{"java-predictable-prng-seed", "MEDIUM", checkJavaPredictablePRNGSeed},
 	{"java-jwt-none-algorithm", "HIGH", checkJavaJWTNoneAlgorithm},
+	{"java-empty-exception-handler", "MEDIUM", checkJavaEmptyExceptionHandler},
+	{"java-empty-block", "LOW", checkJavaEmptyBlock},
+	{"java-unreachable-code", "LOW", checkJavaUnreachableCode},
 }
 
 func javaIssueAt(id, severity, path, title, message string, n *gts.Node) model.Issue {
@@ -572,6 +575,75 @@ func checkJavaJWTNoneAlgorithm(root *gts.Node, src []byte, path string) []model.
 		issues = append(issues, javaIssueAt("java-jwt-none-algorithm", "HIGH", path,
 			"JWT algorithm set to 'none'", "SignatureAlgorithm.NONE accepts unsigned tokens, allowing signature bypass",
 			javaCapMap(m)["call"]))
+	}
+	return issues
+}
+
+// checkJavaEmptyExceptionHandler is ojo's first reliability ("Bug", not
+// "Vulnerability") rule for Java: an empty catch block silently swallows
+// whatever exception it caught, hiding real failures — SonarQube's S2486/
+// S1166 in its own rule set. A catch block that does anything at all
+// (logging, rethrowing, a comment doesn't count since it isn't a node) is
+// not flagged.
+var javaCatchQuery = mustJavaQuery(`(catch_clause body: (block) @body) @catch`)
+
+func checkJavaEmptyExceptionHandler(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range javaCatchQuery.ExecuteNode(root, javaLang, src) {
+		caps := javaCapMap(m)
+		if caps["body"].NamedChildCount() > 0 {
+			continue
+		}
+		issues = append(issues, javaIssueAt("java-empty-exception-handler", "MEDIUM", path,
+			"Empty catch block", "catch (...) { } silently swallows the exception, hiding real failures; at minimum log it",
+			caps["catch"]))
+	}
+	return issues
+}
+
+// checkJavaEmptyBlock flags an if/else/while/for body with no statements at
+// all (SonarQube's S108) — almost always dead code, or (in the if-branch
+// case) a silently-swallowed condition. An empty method/class body is not
+// flagged: unlike a branch, that's an ordinary stub/interface implementation.
+var (
+	javaIfBodyQuery   = mustJavaQuery(`(if_statement consequence: (block) @body) @stmt`)
+	javaElseBodyQuery = mustJavaQuery(`(if_statement alternative: (block) @body) @stmt`)
+	javaWhileQuery    = mustJavaQuery(`(while_statement body: (block) @body) @stmt`)
+	javaForBodyQuery  = mustJavaQuery(`(for_statement body: (block) @body) @stmt`)
+)
+
+func checkJavaEmptyBlock(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for shape, q := range map[string]*gts.Query{
+		"if": javaIfBodyQuery, "else": javaElseBodyQuery, "while": javaWhileQuery, "for": javaForBodyQuery,
+	} {
+		for _, m := range q.ExecuteNode(root, javaLang, src) {
+			caps := javaCapMap(m)
+			if caps["body"].NamedChildCount() > 0 {
+				continue
+			}
+			issues = append(issues, javaIssueAt("java-empty-block", "LOW", path,
+				"Empty "+shape+" block", shape+" body has no statements — likely dead code, or (if this is an error check) a silently-swallowed condition",
+				caps["stmt"]))
+		}
+	}
+	return issues
+}
+
+// checkJavaUnreachableCode flags a statement immediately following a
+// return/throw/break/continue in the same block — SonarQube's S1763. Flags
+// only the first unreachable statement per terminal statement, not every
+// statement after it, to avoid spamming one issue per line of genuinely
+// dead code.
+var javaUnreachableQuery = mustJavaQuery(`(block [(return_statement) (throw_statement) (break_statement) (continue_statement)] @term . (_) @after)`)
+
+func checkJavaUnreachableCode(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range javaUnreachableQuery.ExecuteNode(root, javaLang, src) {
+		caps := javaCapMap(m)
+		issues = append(issues, javaIssueAt("java-unreachable-code", "LOW", path,
+			"Unreachable code", "this statement can never execute; it follows a "+string(caps["term"].Text(src))+" in the same block",
+			caps["after"]))
 	}
 	return issues
 }

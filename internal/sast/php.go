@@ -48,6 +48,9 @@ var phpRules = []phpRule{
 	{"php-unsafe-reflection", "HIGH", checkPHPUnsafeReflection},
 	{"php-predictable-prng-seed", "MEDIUM", checkPHPPredictablePRNGSeed},
 	{"php-mass-assignment", "MEDIUM", checkPHPMassAssignment},
+	{"php-empty-exception-handler", "MEDIUM", checkPHPEmptyExceptionHandler},
+	{"php-empty-block", "LOW", checkPHPEmptyBlock},
+	{"php-unreachable-code", "LOW", checkPHPUnreachableCode},
 }
 
 func phpIssueAt(id, severity, path, title, message string, n *gts.Node) model.Issue {
@@ -675,6 +678,71 @@ func checkPHPMassAssignment(root *gts.Node, src []byte, path string) []model.Iss
 		issues = append(issues, phpIssueAt("php-mass-assignment", "MEDIUM", path,
 			"Mass assignment from unfiltered request input", "::create($request->all()) assigns every request field to the model, including ones a real form never exposes; use $request->only([...]) or a $fillable/$guarded allowlist",
 			caps["call"]))
+	}
+	return issues
+}
+
+// checkPHPEmptyExceptionHandler flags an empty catch block, which silently
+// swallows whatever it caught — SonarQube's S2486/S1166 shape.
+var phpCatchQuery = mustPHPQuery(`(catch_clause body: (compound_statement) @body) @catch`)
+
+func checkPHPEmptyExceptionHandler(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range phpCatchQuery.ExecuteNode(root, phpLang, src) {
+		caps := phpCapMap(m)
+		if caps["body"].NamedChildCount() > 0 {
+			continue
+		}
+		issues = append(issues, phpIssueAt("php-empty-exception-handler", "MEDIUM", path,
+			"Empty catch block", "catch (...) { } silently swallows the exception, hiding real failures; at minimum log it",
+			caps["catch"]))
+	}
+	return issues
+}
+
+// checkPHPEmptyBlock flags an if/else/while/for body with no statements at
+// all (SonarQube's S108) — almost always dead code, or (in the if-branch
+// case) a silently-swallowed condition.
+var (
+	phpIfBodyQuery   = mustPHPQuery(`(if_statement body: (compound_statement) @body) @stmt`)
+	phpElseBodyQuery = mustPHPQuery(`(else_clause body: (compound_statement) @body) @stmt`)
+	phpWhileQuery    = mustPHPQuery(`(while_statement body: (compound_statement) @body) @stmt`)
+	phpForBodyQuery  = mustPHPQuery(`(for_statement body: (compound_statement) @body) @stmt`)
+)
+
+func checkPHPEmptyBlock(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for shape, q := range map[string]*gts.Query{
+		"if": phpIfBodyQuery, "else": phpElseBodyQuery, "while": phpWhileQuery, "for": phpForBodyQuery,
+	} {
+		for _, m := range q.ExecuteNode(root, phpLang, src) {
+			caps := phpCapMap(m)
+			if caps["body"].NamedChildCount() > 0 {
+				continue
+			}
+			issues = append(issues, phpIssueAt("php-empty-block", "LOW", path,
+				"Empty "+shape+" block", shape+" body has no statements — likely dead code, or (if this is an error check) a silently-swallowed condition",
+				caps["stmt"]))
+		}
+	}
+	return issues
+}
+
+// checkPHPUnreachableCode flags a statement immediately following a
+// return/throw/break/continue in the same block — SonarQube's S1763. PHP's
+// grammar represents `throw` as an expression_statement wrapping a
+// throw_expression, not a dedicated throw_statement type the way
+// Java/JS/Python do — verified against a real parse tree before writing
+// this query, not assumed from the other languages' shape.
+var phpUnreachableQuery = mustPHPQuery(`(compound_statement [(expression_statement (throw_expression)) (return_statement) (break_statement) (continue_statement)] @term . (_) @after)`)
+
+func checkPHPUnreachableCode(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range phpUnreachableQuery.ExecuteNode(root, phpLang, src) {
+		caps := phpCapMap(m)
+		issues = append(issues, phpIssueAt("php-unreachable-code", "LOW", path,
+			"Unreachable code", "this statement can never execute; it follows a "+string(caps["term"].Text(src))+" in the same block",
+			caps["after"]))
 	}
 	return issues
 }

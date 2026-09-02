@@ -724,3 +724,47 @@ func checkCookieMissingFlags(f *ast.File, fset *token.FileSet, path string) []mo
 	})
 	return issues
 }
+
+// checkEmptyBlock is ojo's first reliability ("Bug", not "Vulnerability")
+// rule, the SonarQube-style category ojo previously had zero coverage for.
+// It flags an if/else/for/range body with no statements at all — almost
+// always either dead code left over from refactoring or, in the most common
+// real case, a silently-swallowed error check (`if err != nil { }`). An
+// empty function body is deliberately not flagged: unlike a branch, an
+// empty function/method is a completely ordinary stub/interface
+// implementation, not a bug candidate.
+//
+// go-unreachable-code (the statement-after-return/break/continue/panic shape
+// this rule's sibling in every other language covers) is deliberately not
+// added for Go: `go vet`'s unreachable analyzer already covers this
+// natively and is already part of any real Go CI pipeline — duplicating it
+// here would just be a worse copy of a check the toolchain already ships.
+func checkEmptyBlock(f *ast.File, fset *token.FileSet, path string) []model.Issue {
+	var issues []model.Issue
+	flag := func(pos token.Pos, shape string) {
+		issues = append(issues, issueAt("go-empty-block", "LOW", path,
+			"Empty "+shape+" block", shape+" body has no statements — likely dead code, or (if this is an error check) a silently-swallowed error",
+			fset, pos))
+	}
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch s := n.(type) {
+		case *ast.IfStmt:
+			if len(s.Body.List) == 0 {
+				flag(s.Body.Lbrace, "if")
+			}
+			if elseBlock, ok := s.Else.(*ast.BlockStmt); ok && len(elseBlock.List) == 0 {
+				flag(elseBlock.Lbrace, "else")
+			}
+		case *ast.ForStmt:
+			if len(s.Body.List) == 0 {
+				flag(s.Body.Lbrace, "for")
+			}
+		case *ast.RangeStmt:
+			if len(s.Body.List) == 0 {
+				flag(s.Body.Lbrace, "for-range")
+			}
+		}
+		return true
+	})
+	return issues
+}

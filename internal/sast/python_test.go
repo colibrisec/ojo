@@ -253,3 +253,40 @@ func TestPythonScanFindsWeakCipher(t *testing.T) {
 		t.Errorf("expected 2 py-weak-cipher issues (DES.new reported once despite also being ECB, plus AES-ECB), got %d: %+v", count, issues)
 	}
 }
+
+const pyReliabilityRules = `def a(x):
+    try:
+        f()
+    except Exception:
+        pass
+    try:
+        f()
+    except Exception as e:
+        log(e)
+    if x:
+        return
+        y()
+`
+
+func TestPythonScanFindsReliabilityRules(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "reliability.py"), []byte(pyReliabilityRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	counts := map[string]int{}
+	for _, i := range issues {
+		counts[i.RuleID]++
+	}
+	if counts["py-empty-exception-handler"] != 1 {
+		t.Errorf("expected 1 py-empty-exception-handler issue (not the except that logs), got %d: %+v", counts["py-empty-exception-handler"], issues)
+	}
+	if counts["py-unreachable-code"] != 1 {
+		t.Errorf("expected 1 py-unreachable-code issue, got %d: %+v", counts["py-unreachable-code"], issues)
+	}
+}

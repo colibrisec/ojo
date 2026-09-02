@@ -47,6 +47,9 @@ var rubyRules = []rubyRule{
 	{"ruby-ssti", "HIGH", checkRubySSTI},
 	{"ruby-unsafe-reflection", "HIGH", checkRubyUnsafeReflection},
 	{"ruby-predictable-prng-seed", "MEDIUM", checkRubyPredictablePRNGSeed},
+	{"ruby-empty-exception-handler", "MEDIUM", checkRubyEmptyExceptionHandler},
+	{"ruby-empty-block", "LOW", checkRubyEmptyBlock},
+	{"ruby-unreachable-code", "LOW", checkRubyUnreachableCode},
 }
 
 func rubyIssueAt(id, severity, path, title, message string, n *gts.Node) model.Issue {
@@ -620,6 +623,115 @@ func checkRubyCookieMissingFlags(root *gts.Node, src []byte, path string) []mode
 			issues = append(issues, rubyIssueAt("ruby-cookie-missing-flags", "LOW", path,
 				flag+" not set on cookie options", "cookies[...] = {...} doesn't set "+flag+"; it defaults to false, weakening cookie protection unless set elsewhere",
 				val))
+		}
+	}
+	return issues
+}
+
+// rubyHasChildType reports whether n has a direct named child of the given
+// type — used below since Ruby's grammar represents an empty `then`/`do`
+// branch by omitting the wrapper node entirely rather than emitting one
+// with zero children (unlike Java/JS/PHP's if/while, which always emit a
+// block node even when it's empty). Verified against a real parse tree
+// before relying on this: `rescue => e\nend` (empty) has only an
+// exception_variable child; `if x\nend` (empty) has only the condition
+// child — in both cases the body wrapper node ("then") simply isn't there.
+func rubyHasChildType(n *gts.Node, typ string) bool {
+	for _, c := range n.Children() {
+		if c.Type(rubyLang) == typ {
+			return true
+		}
+	}
+	return false
+}
+
+// checkRubyEmptyExceptionHandler flags a `rescue` clause with no body at
+// all — SonarQube's S2486/S1166 shape, RuboCop's own Lint/SuppressedException
+// cop covers the identical case. A rescue that does anything (even just
+// `rescue => e; end` with a body of, say, a single no-op call) is not
+// flagged; only a rescue with nothing between `rescue`/`rescue => e` and
+// `end` is.
+var rubyRescueQuery = mustRubyQuery(`(rescue) @r`)
+
+func checkRubyEmptyExceptionHandler(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range rubyRescueQuery.ExecuteNode(root, rubyLang, src) {
+		r := rubyCapMap(m)["r"]
+		if rubyHasChildType(r, "then") {
+			continue
+		}
+		issues = append(issues, rubyIssueAt("ruby-empty-exception-handler", "MEDIUM", path,
+			"Empty rescue clause", "rescue with no body silently swallows the exception, hiding real failures; at minimum log it",
+			r))
+	}
+	return issues
+}
+
+// checkRubyEmptyBlock flags an if/else/while body with no statements at all
+// (SonarQube's S108) — likely dead code, or (in the if-branch case) a
+// silently-swallowed condition. Ruby's `unless`/`until` get the same
+// treatment as Go's skip of switch/select: not covered this round, same
+// shape as `if`/`while` if this rule set is revisited.
+var (
+	rubyIfQuery     = mustRubyQuery(`(if) @if`)
+	rubyIfElseQuery = mustRubyQuery(`(if (else) @body) @if`)
+	rubyWhileQuery  = mustRubyQuery(`(while (do) @body) @w`)
+)
+
+func checkRubyEmptyBlock(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range rubyIfQuery.ExecuteNode(root, rubyLang, src) {
+		ifNode := rubyCapMap(m)["if"]
+		if rubyHasChildType(ifNode, "then") {
+			continue
+		}
+		issues = append(issues, rubyIssueAt("ruby-empty-block", "LOW", path,
+			"Empty if block", "if body has no statements — likely dead code, or (if this is an error check) a silently-swallowed condition",
+			ifNode))
+	}
+	for _, m := range rubyIfElseQuery.ExecuteNode(root, rubyLang, src) {
+		caps := rubyCapMap(m)
+		if caps["body"].NamedChildCount() > 0 {
+			continue
+		}
+		issues = append(issues, rubyIssueAt("ruby-empty-block", "LOW", path,
+			"Empty else block", "else body has no statements — likely dead code",
+			caps["if"]))
+	}
+	for _, m := range rubyWhileQuery.ExecuteNode(root, rubyLang, src) {
+		caps := rubyCapMap(m)
+		if caps["body"].NamedChildCount() > 0 {
+			continue
+		}
+		issues = append(issues, rubyIssueAt("ruby-empty-block", "LOW", path,
+			"Empty while block", "while body has no statements — likely dead code",
+			caps["w"]))
+	}
+	return issues
+}
+
+// checkRubyUnreachableCode flags a statement immediately following a
+// return/break/next in the same `then` (if/rescue body) or method/block
+// body — SonarQube's S1763. Ruby has no `raise` statement type (`raise` is
+// an ordinary Kernel method call, indistinguishable at the grammar level
+// from any other call), so unlike the other languages this can't include
+// raise; and `while`/`until`'s `do`-wrapped body isn't covered this round
+// (the two containers here — `then` and `body_statement` — cover the
+// dominant real-world case: a guard clause or rescue ending a method or
+// iterator block early).
+var (
+	rubyUnreachableThenQuery = mustRubyQuery(`(then [(return) (break) (next)] @term . (_) @after)`)
+	rubyUnreachableBodyQuery = mustRubyQuery(`(body_statement [(return) (break) (next)] @term . (_) @after)`)
+)
+
+func checkRubyUnreachableCode(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, q := range []*gts.Query{rubyUnreachableThenQuery, rubyUnreachableBodyQuery} {
+		for _, m := range q.ExecuteNode(root, rubyLang, src) {
+			caps := rubyCapMap(m)
+			issues = append(issues, rubyIssueAt("ruby-unreachable-code", "LOW", path,
+				"Unreachable code", "this statement can never execute; it follows a "+string(caps["term"].Text(src))+" in the same block",
+				caps["after"]))
 		}
 	}
 	return issues
