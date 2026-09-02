@@ -323,6 +323,7 @@ func checkPHPUnserialize(root *gts.Node, src []byte, path string) []model.Issue 
 var (
 	phpRandFuncQuery = mustPHPQuery(`(function_call_expression function: (name) @fname (#any-of? @fname "rand" "mt_rand")) @call`)
 	phpFuncDefQuery  = mustPHPQuery(`(function_definition name: (name) @fname body: (compound_statement) @body) @def`)
+	phpFreeCallQuery = mustPHPQuery(`(function_call_expression function: (name) @fn arguments: (arguments) @args) @call`)
 )
 
 func checkPHPInsecureRandom(root *gts.Node, src []byte, path string) []model.Issue {

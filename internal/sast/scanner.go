@@ -64,6 +64,7 @@ func Scan(root string) ([]model.Issue, error) {
 			if err != nil {
 				return nil // ponytail: skip files that don't parse, don't fail the whole scan
 			}
+			goCurrentParamSeed = goComputeParamSeed(f)
 			for _, r := range rules {
 				issues = append(issues, r.check(f, fset, path)...)
 			}
@@ -114,6 +115,7 @@ func scanPythonFile(path string) ([]model.Issue, error) {
 	if err != nil {
 		return nil, err
 	}
+	tsCurrentParamSeed = tsComputeParamSeed(tree.RootNode(), pyLang, src, pyFuncBoundary, funcDefQuery, pyFreeCallQuery, identifierParamName, pyAssignInfo, pyExprTainted)
 	var issues []model.Issue
 	for _, r := range pyRules {
 		issues = append(issues, r.check(tree.RootNode(), src, path)...)
@@ -130,6 +132,7 @@ func scanPHPFile(path string) ([]model.Issue, error) {
 	if err != nil {
 		return nil, err
 	}
+	tsCurrentParamSeed = tsComputeParamSeed(tree.RootNode(), phpLang, src, phpFuncBoundary, phpFuncDefQuery, phpFreeCallQuery, phpParamName, phpAssignInfo, phpExprTainted)
 	var issues []model.Issue
 	for _, r := range phpRules {
 		issues = append(issues, r.check(tree.RootNode(), src, path)...)
@@ -146,6 +149,7 @@ func scanRubyFile(path string) ([]model.Issue, error) {
 	if err != nil {
 		return nil, err
 	}
+	tsCurrentParamSeed = tsComputeParamSeed(tree.RootNode(), rubyLang, src, rubyFuncBoundary, rubyMethodDefQuery, rubyFreeCallQuery, identifierParamName, rubyAssignInfo, rubyExprTainted)
 	var issues []model.Issue
 	for _, r := range rubyRules {
 		issues = append(issues, r.check(tree.RootNode(), src, path)...)
@@ -162,6 +166,7 @@ func scanJavaFile(path string) ([]model.Issue, error) {
 	if err != nil {
 		return nil, err
 	}
+	tsCurrentParamSeed = tsComputeParamSeed(tree.RootNode(), javaLang, src, javaFuncBoundary, javaMethodDefQuery, javaFreeCallQuery, identifierParamName, javaAssignInfo, javaExprTainted)
 	var issues []model.Issue
 	for _, r := range javaRules {
 		issues = append(issues, r.check(tree.RootNode(), src, path)...)
@@ -194,6 +199,7 @@ func scanJSFile(path string, lang *gts.Language) ([]model.Issue, error) {
 	if err != nil {
 		return nil, err
 	}
+	tsCurrentParamSeed = tsComputeParamSeed(tree.RootNode(), lang, src, jsFuncBoundary, jsFuncDeclQuery.forLang(lang), jsFreeCallQuery.forLang(lang), identifierParamName, jsAssignInfo, jsExprTainted)
 	var issues []model.Issue
 	for _, r := range jsRules {
 		issues = append(issues, r.check(tree.RootNode(), lang, src, path)...)
