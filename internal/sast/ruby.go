@@ -31,6 +31,7 @@ var rubyRules = []rubyRule{
 	{"ruby-command-injection", "HIGH", checkRubyCommandInjection},
 	{"ruby-sql-injection", "HIGH", checkRubySQLInjection},
 	{"ruby-weak-hash", "LOW", checkRubyWeakHash},
+	{"ruby-weak-cipher", "MEDIUM", checkRubyWeakCipher},
 	{"ruby-insecure-deserialization", "HIGH", checkRubyInsecureDeserialization},
 	{"ruby-insecure-random-for-secrets", "INFO", checkRubyInsecureRandom},
 	{"ruby-tls-verify-disabled", "HIGH", checkRubyTLSVerifyDisabled},
@@ -180,6 +181,27 @@ func checkRubyWeakHash(root *gts.Node, src []byte, path string) []model.Issue {
 		alg := string(caps["alg"].Text(src))
 		issues = append(issues, rubyIssueAt("ruby-weak-hash", "LOW", path,
 			"Weak hash algorithm", "Digest::"+alg+" is cryptographically broken; use Digest::SHA256 or stronger",
+			caps["call"]))
+	}
+	return issues
+}
+
+var rubyCipherNewQuery = mustRubyQuery(`(call receiver: (scope_resolution) @recv method: (identifier) @meth arguments: (argument_list (string) @alg) (#eq? @recv "OpenSSL::Cipher") (#eq? @meth "new")) @call`)
+
+// checkRubyWeakCipher flags OpenSSL::Cipher.new(...) with a broken cipher
+// (DES/RC4) or an insecure mode (ECB) — same name-in-algorithm-string signal
+// as go/java/js/php-weak-cipher, against Ruby's OpenSSL algorithm strings.
+func checkRubyWeakCipher(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range rubyCipherNewQuery.ExecuteNode(root, rubyLang, src) {
+		caps := rubyCapMap(m)
+		alg := string(caps["alg"].Text(src))
+		upper := strings.ToUpper(alg)
+		if !strings.Contains(upper, "DES") && !strings.Contains(upper, "RC4") && !strings.Contains(upper, "ECB") {
+			continue
+		}
+		issues = append(issues, rubyIssueAt("ruby-weak-cipher", "MEDIUM", path,
+			"Weak cipher or insecure mode", "OpenSSL::Cipher.new("+alg+") uses a broken cipher or an insecure mode (ECB); use 'aes-256-gcm' instead",
 			caps["call"]))
 	}
 	return issues

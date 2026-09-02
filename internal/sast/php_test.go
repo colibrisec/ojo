@@ -185,3 +185,61 @@ func TestPHPScanFindsCookieMissingFlags(t *testing.T) {
 		t.Errorf("expected 4 php-cookie-missing-flags issues, got %d: %+v", count, issues)
 	}
 }
+
+const phpWeakCipherRules = `<?php
+$c1 = openssl_encrypt($data, 'des-ede3-cbc', $key);
+$c2 = openssl_encrypt($data, 'aes-128-ecb', $key);
+$c3 = openssl_encrypt($data, 'aes-256-gcm', $key);
+`
+
+func TestPHPScanFindsWeakCipher(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "cipher.php"), []byte(phpWeakCipherRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count := 0
+	for _, i := range issues {
+		if i.RuleID == "php-weak-cipher" {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Errorf("expected 2 php-weak-cipher issues (DES + ECB, not the AES-GCM call), got %d: %+v", count, issues)
+	}
+}
+
+const phpMassAssignmentRules = `<?php
+User::create($request->all());
+$user->fill($request->all());
+$user->update($request->all());
+User::create(['name' => $request->input('name')]);
+$user->fill($safeArray);
+`
+
+func TestPHPScanFindsMassAssignment(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "mass.php"), []byte(phpMassAssignmentRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count := 0
+	for _, i := range issues {
+		if i.RuleID == "php-mass-assignment" {
+			count++
+		}
+	}
+	if count != 3 {
+		t.Errorf("expected 3 php-mass-assignment issues (create/fill/update via $request->all(), not the allowlisted or safe-array calls), got %d: %+v", count, issues)
+	}
+}
