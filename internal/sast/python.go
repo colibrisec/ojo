@@ -31,6 +31,7 @@ var pyRules = []pyRule{
 	{"py-command-injection", "HIGH", checkPyCommandInjection},
 	{"py-sql-injection", "HIGH", checkPySQLInjection},
 	{"py-weak-hash", "LOW", checkPyWeakHash},
+	{"py-weak-cipher", "MEDIUM", checkPyWeakCipher},
 	{"py-pickle-deserialization", "HIGH", checkPyPickle},
 	{"py-yaml-unsafe-load", "MEDIUM", checkPyYAMLUnsafeLoad},
 	{"py-insecure-random-for-secrets", "INFO", checkPyInsecureRandom},
@@ -186,6 +187,42 @@ func checkPyWeakHash(root *gts.Node, src []byte, path string) []model.Issue {
 		fn := string(caps["fn"].Text(src))
 		issues = append(issues, pyIssueAt("py-weak-hash", "LOW", path,
 			"Weak hash algorithm", "hashlib."+fn+" is cryptographically broken; use hashlib.sha256 or stronger",
+			caps["call"]))
+	}
+	return issues
+}
+
+var (
+	weakCipherClassQuery = mustPyQuery(`(call function: (attribute object: (identifier) @mod attribute: (identifier) @fn) (#any-of? @mod "DES" "DES3" "ARC4" "Blowfish") (#eq? @fn "new")) @call`)
+	weakCipherModeQuery  = mustPyQuery(`(call function: (attribute object: (identifier) @mod attribute: (identifier) @fn) arguments: (argument_list . (_) . (attribute attribute: (identifier) @mode)) (#eq? @fn "new") (#eq? @mode "MODE_ECB")) @call`)
+)
+
+// checkPyWeakCipher covers pycryptodome/PyCrypto's two independent ways to
+// end up with a broken cipher: constructing an inherently weak cipher class
+// (DES/DES3/ARC4/Blowfish — same name-list signal as go/java-weak-cipher),
+// or constructing any cipher (including AES) in ECB mode, which leaks
+// plaintext structure regardless of key strength. A call already flagged by
+// the class check is skipped by the mode check so DES.new(key, DES.MODE_ECB)
+// reports once, not twice.
+func checkPyWeakCipher(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	weakClasses := map[string]bool{}
+	for _, m := range weakCipherClassQuery.ExecuteNode(root, pyLang, src) {
+		caps := capMap(m)
+		mod := string(caps["mod"].Text(src))
+		weakClasses[string(caps["call"].Text(src))] = true
+		issues = append(issues, pyIssueAt("py-weak-cipher", "MEDIUM", path,
+			"Weak cipher algorithm", mod+".new(...) is a broken cipher; use AES in GCM mode instead",
+			caps["call"]))
+	}
+	for _, m := range weakCipherModeQuery.ExecuteNode(root, pyLang, src) {
+		caps := capMap(m)
+		call := string(caps["call"].Text(src))
+		if weakClasses[call] {
+			continue // already reported above for the cipher class itself
+		}
+		issues = append(issues, pyIssueAt("py-weak-cipher", "MEDIUM", path,
+			"Insecure cipher mode (ECB)", string(caps["mod"].Text(src))+".new(..., "+string(caps["mod"].Text(src))+".MODE_ECB) leaks plaintext structure; use MODE_GCM instead",
 			caps["call"]))
 	}
 	return issues

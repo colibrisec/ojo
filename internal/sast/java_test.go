@@ -191,3 +191,35 @@ func TestJavaScanFindsCookieMissingFlags(t *testing.T) {
 		t.Errorf("expected 2 java-cookie-missing-flags issues (setSecure + setHttpOnly missing in unhardened() only), got %d: %+v", count, issues)
 	}
 }
+
+const javaJWTNoneRules = `class App {
+    void go() {
+        Algorithm alg = Algorithm.none();
+        String jwt = JWT.create().withIssuer("auth0").sign(Algorithm.none());
+        SignatureAlgorithm sa = SignatureAlgorithm.NONE;
+        Jwts.builder().signWith(SignatureAlgorithm.HS256, "key");
+    }
+}
+`
+
+func TestJavaScanFindsJWTNoneAlgorithm(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "jwt.java"), []byte(javaJWTNoneRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count := 0
+	for _, i := range issues {
+		if i.RuleID == "java-jwt-none-algorithm" {
+			count++
+		}
+	}
+	if count != 3 {
+		t.Errorf("expected 3 java-jwt-none-algorithm issues (2 Algorithm.none() calls + 1 SignatureAlgorithm.NONE, not the HS256 signWith), got %d: %+v", count, issues)
+	}
+}

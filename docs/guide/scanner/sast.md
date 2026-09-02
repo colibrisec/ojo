@@ -66,7 +66,7 @@ Other languages are still out of scope — revisit per-language the same way Pyt
 | `go-predictable-prng-seed` | MEDIUM | `math/rand`'s `Seed(...)`/`NewSource(...)` called with a compile-time integer literal |
 | `go-ssrf` | HIGH | `net/http`'s `Get`/`Post`/`Head`/`PostForm`/`NewRequest`/`NewRequestWithContext` with a URL built via `fmt.Sprintf`/concatenation, or (intraprocedural taint tracking) a local variable derived from request/env input, instead of a validated/allowlisted URL |
 
-## Built-in rules — Python (25)
+## Built-in rules — Python (26)
 
 | Rule | Severity | Detects |
 |---|---|---|
@@ -75,6 +75,7 @@ Other languages are still out of scope — revisit per-language the same way Pyt
 | `py-command-injection` | HIGH | `os.system(...)`/`os.popen(...)`, or `subprocess.{run,call,Popen,check_call,check_output}(..., shell=True)` |
 | `py-sql-injection` | HIGH | `.execute(`/`.executemany(` with a query built via f-string interpolation, `%`-formatting, concatenation, or `.format(...)`, or (taint tracking) a local variable derived from request/env input, instead of parameter placeholders |
 | `py-weak-hash` | LOW | `hashlib.md5`/`hashlib.sha1` usage |
+| `py-weak-cipher` | MEDIUM | pycryptodome `DES`/`DES3`/`ARC4`/`Blowfish` `.new(...)`, or any cipher's `.new(key, X.MODE_ECB)` |
 | `py-pickle-deserialization` | HIGH | `pickle.load`/`pickle.loads` usage |
 | `py-yaml-unsafe-load` | MEDIUM | `yaml.load(...)` without `Loader=yaml.SafeLoader`/`CSafeLoader` |
 | `py-insecure-random-for-secrets` | INFO | The `random` module used inside a function whose name suggests it generates a token/session/secret |
@@ -96,7 +97,7 @@ Other languages are still out of scope — revisit per-language the same way Pyt
 | `py-predictable-prng-seed` | MEDIUM | `random.seed(...)` called with a compile-time integer literal |
 | `py-agent-unsandboxed-exec` | HIGH | `.run(...)`/`.arun(...)` on a LangChain/AutoGen/CrewAI-style tool (`PythonREPLTool`, `ShellTool`, `BashProcess`, `CodeInterpreterTool`, `LocalCommandLineCodeExecutor`) with an argument built from f-string/%/concatenation, or (taint tracking) derived from request/env input — matched by class name whether constructed inline or through a tracked local variable |
 
-## Built-in rules — JavaScript / TypeScript / TSX (19)
+## Built-in rules — JavaScript / TypeScript / TSX (21)
 
 Applies to `.js`/`.jsx`/`.mjs`/`.cjs` (javascript grammar), `.ts`/`.mts`/`.cts` (typescript grammar), and `.tsx` (tsx grammar). `js-react-dangerously-set-innerhtml` only runs against the js/tsx grammars — plain TypeScript can't contain JSX.
 
@@ -107,12 +108,14 @@ Applies to `.js`/`.jsx`/`.mjs`/`.cjs` (javascript grammar), `.ts`/`.mts`/`.cts` 
 | `js-command-injection` | HIGH | `child_process.exec`/`execSync` with a command built via template-literal interpolation or `+` concatenation, or (taint tracking) a local variable derived from request/env input, instead of a literal; or `child_process.spawn`/`execFile` called with `{ shell: true }`, reintroducing the shell-injection risk the argument-array form exists to avoid |
 | `js-sql-injection` | HIGH | `.query(`/`.execute(` with a query built via template-literal interpolation or `+` concatenation, or (taint tracking) a local variable derived from request/env input, instead of parameterized placeholders |
 | `js-weak-hash` | LOW | `crypto.createHash('md5')` or `crypto.createHash('sha1')` |
+| `js-weak-cipher` | MEDIUM | `crypto.createCipher(iv)`/`createDecipher(iv)` where the algorithm string contains `DES`, `RC4`, or `ECB` |
 | `js-insecure-random-for-secrets` | INFO | `Math.random()` used inside a function whose name suggests it generates a token/session/secret |
 | `js-tls-verify-disabled` | HIGH | An object literal with `rejectUnauthorized: false` |
 | `js-dom-xss-innerhtml` | MEDIUM | `.innerHTML = ...` assigned a non-literal value |
 | `js-react-dangerously-set-innerhtml` | MEDIUM | `dangerouslySetInnerHTML` used at all (js/tsx only) |
 | `js-open-redirect` | MEDIUM | `res.redirect(...)` with a target built from `req`/`request` (directly, or through a local variable — taint tracking) or from template-literal interpolation/concatenation |
 | `js-jwt-none-algorithm` | HIGH | An object literal with `algorithm: 'none'` |
+| `js-yaml-unsafe-load` | MEDIUM | `yaml.load(...)`/`YAML.load(...)` with no `schema:` option (js-yaml pre-v4 defaults to a schema that can construct arbitrary types) |
 | `js-cors-wildcard` | MEDIUM | `res.setHeader('Access-Control-Allow-Origin', '*')` (also matches a plain `.header(...)` call of the same shape) |
 | `js-insecure-cookie` | MEDIUM | An object literal with `httpOnly: false` or `secure: false`; or `sameSite: 'none'` set without a sibling `secure: true` in the same options object |
 | `js-path-traversal` | HIGH | `fs.readFile`/`readFileSync`/`createReadStream` with a path built from `req`/`request` (directly, or through a local variable — taint tracking) or via template-literal interpolation/concatenation |
@@ -122,7 +125,7 @@ Applies to `.js`/`.jsx`/`.mjs`/`.cjs` (javascript grammar), `.ts`/`.mts`/`.cts` 
 | `js-unsafe-reflection` | HIGH | `require(...)` with a module-specifier argument that is itself (directly, or through a local variable — taint tracking) request/env-derived |
 | `js-ssrf` | HIGH | `fetch(...)` or `axios.get/post/put/delete(...)` with a URL derived from request/env input (directly, or through a local variable — taint tracking) or built via template-literal interpolation/concatenation |
 
-## Built-in rules — PHP (20)
+## Built-in rules — PHP (22)
 
 | Rule | Severity | Detects |
 |---|---|---|
@@ -131,6 +134,7 @@ Applies to `.js`/`.jsx`/`.mjs`/`.cjs` (javascript grammar), `.ts`/`.mts`/`.cts` 
 | `php-command-injection` | HIGH | `system`/`exec`/`shell_exec`/`passthru`/`popen`/`proc_open` with a command built via `.` concatenation or string interpolation, or (taint tracking) a local variable derived from `$_GET`/`$_POST`/`$_REQUEST`/`$_COOKIE`/`$_SERVER`/`$_FILES`/`getenv()`, instead of a literal |
 | `php-sql-injection` | HIGH | `->query(`/`->exec(` (PDO/mysqli OOP style) with a query built via concatenation/interpolation, or (taint tracking) a local variable derived from a superglobal/env input, instead of a prepared-statement placeholder |
 | `php-weak-hash` | LOW | `md5()`/`sha1()`, or `hash('md5'/'sha1', ...)` |
+| `php-weak-cipher` | MEDIUM | `openssl_encrypt`/`openssl_decrypt` where the cipher-method argument contains `DES`, `RC4`, or `ECB` |
 | `php-insecure-deserialization` | HIGH | `unserialize(...)` called at all |
 | `php-insecure-random-for-secrets` | INFO | `rand()`/`mt_rand()` used inside a function whose name suggests it generates a token/session/secret |
 | `php-tls-verify-disabled` | HIGH | An array literal with `'verify_peer'`/`'verify_peer_name' => false`, or `curl_setopt(..., CURLOPT_SSL_VERIFYPEER`/`CURLOPT_SSL_VERIFYHOST, false)` |
@@ -146,8 +150,9 @@ Applies to `.js`/`.jsx`/`.mjs`/`.cjs` (javascript grammar), `.ts`/`.mts`/`.cts` 
 | `php-nosqli` | HIGH | MongoDB driver `find`/`findOne`/`updateOne`/`updateMany`/`deleteOne`/`deleteMany` with a filter argument that is itself (directly, or through a local variable — taint tracking) a superglobal/env-derived value, rather than a literal filter with individually-typed fields |
 | `php-unsafe-reflection` | HIGH | `call_user_func(...)`/`call_user_func_array(...)` with a callback argument that is itself (directly, or through a local variable — taint tracking) a superglobal/env-derived value |
 | `php-predictable-prng-seed` | MEDIUM | `srand(...)`/`mt_srand(...)` called with a compile-time integer literal |
+| `php-mass-assignment` | MEDIUM | Laravel `Model::create($request->all())`, or `->fill(...)`/`->update(...)`/`->forceFill(...)` called directly on `$request->all()` |
 
-## Built-in rules — Ruby (20)
+## Built-in rules — Ruby (21)
 
 | Rule | Severity | Detects |
 |---|---|---|
@@ -156,6 +161,7 @@ Applies to `.js`/`.jsx`/`.mjs`/`.cjs` (javascript grammar), `.ts`/`.mts`/`.cts` 
 | `ruby-command-injection` | HIGH | `system`/`exec`/`spawn`/`popen` (e.g. `IO.popen`) with a command built via `+` concatenation/interpolation, a backtick/`%x{}` subshell that interpolates a value, or (taint tracking) a local variable derived from params/env input, instead of a literal |
 | `ruby-sql-injection` | HIGH | `where`/`find_by_sql`/`execute`/`select_all`/`select_one`/`exec_query` with a query built via string interpolation or concatenation, or (taint tracking) a local variable derived from params/env input, instead of a bound parameter |
 | `ruby-weak-hash` | LOW | `Digest::MD5`/`Digest::SHA1` usage |
+| `ruby-weak-cipher` | MEDIUM | `OpenSSL::Cipher.new(...)` where the algorithm string contains `DES`, `RC4`, or `ECB` |
 | `ruby-insecure-deserialization` | HIGH | `Marshal.load(...)`, or `YAML.load(...)` (as opposed to `YAML.safe_load`) |
 | `ruby-insecure-random-for-secrets` | INFO | `Kernel#rand` used inside a method whose name suggests it generates a token/session/secret |
 | `ruby-tls-verify-disabled` | HIGH | `OpenSSL::SSL::VERIFY_NONE` used anywhere |
@@ -172,7 +178,7 @@ Applies to `.js`/`.jsx`/`.mjs`/`.cjs` (javascript grammar), `.ts`/`.mts`/`.cts` 
 | `ruby-unsafe-reflection` | HIGH | `send`/`public_send`/`__send__` with a method-name argument that is itself (directly, or through a local variable — taint tracking) params/env-derived (a literal symbol, `obj.send(:foo)`, is not flagged) |
 | `ruby-predictable-prng-seed` | MEDIUM | `srand(...)` called with a compile-time integer literal |
 
-## Built-in rules — Java (19)
+## Built-in rules — Java (20)
 
 | Rule | Severity | Detects |
 |---|---|---|
@@ -195,6 +201,7 @@ Applies to `.js`/`.jsx`/`.mjs`/`.cjs` (javascript grammar), `.ts`/`.mts`/`.cts` 
 | `java-eval-detected` | HIGH | `.eval(...)` (e.g. `javax.script.ScriptEngine`) with an argument built via `+` concatenation, or a local variable derived from request/env input — a literal/hardcoded script argument is not flagged |
 | `java-unsafe-reflection` | HIGH | `Class.forName(...)` with a class-name argument that is itself (directly, or through a local variable — taint tracking) request/env-derived |
 | `java-predictable-prng-seed` | MEDIUM | `new Random(...)` called with a compile-time integer literal |
+| `java-jwt-none-algorithm` | HIGH | `Algorithm.none()` (auth0 java-jwt), or `SignatureAlgorithm.NONE` (jjwt) used at all |
 
 ## Honest ceiling
 
@@ -236,5 +243,10 @@ This is a curated, query-based linter, not a Semgrep replacement — yet. Specif
 - **`*-ssti` covers Go/Python/JS/Ruby only — PHP and Java are skipped on purpose.** Twig's SSTI sink (`$twig->createTemplate($tainted)`) is a method call on a variable whose type ojo has no way to confirm is actually `Twig\Environment` — flagging it would mean flagging any `->createTemplate()` call on any object, a real false-positive magnet with no accurate signal available (same reasoning as skipping `php-open-redirect`'s framework-level redirect helpers). FreeMarker/Velocity's Java sinks are multi-step (build a `Configuration`, wrap the tainted string in a `StringReader`, construct a `Template`) rather than one call with an inline template-source argument, so there's no single-node shape to match without deeper flow analysis than this scanner does. `go-ssti` deliberately matches the exact `template.New(...).Parse(...)` chain rooted at the actually-imported `text/template`/`html/template` package name, not a bare `.Parse(` method name — `Parse` alone collides with `time.Parse`/`url.Parse`/`flag.Parse` and would be a false-positive magnet on any Go codebase.
 - **`py-agent-unsandboxed-exec` is Python-only, matched by class name, no import verification.** LangChain/AutoGen/CrewAI's Python ecosystem is where these unsandboxed-execution tool classes are standardized and common; JS LangChain's tool surface uses `.invoke`/`.call` rather than `.run` and a different, less-settled set of class names — extending there needs its own verification pass, not a guess piggybacked on this rule. Matching is by class name at the constructor call (`PythonREPLTool()`, `ShellTool()`, etc.) or through one tracked local variable assigned from one — same one-hop-through-a-variable ceiling as every other taint-tracked rule in this file, and same "flag the candidate, not a verified type" tradeoff as `java-sql-injection`'s method-name matching: a coincidentally-named class isn't ruled out. Doesn't track a tool instance passed into another function and called there (no interprocedural analysis, same ceiling as everywhere else in this file).
 - **`py-xxe`/`php-xxe`/`ruby-xxe` are narrower than `java-xxe` on purpose, not by oversight.** Java's stdlib XML factories (`DocumentBuilderFactory`, etc.) resolve external entities by default, so `java-xxe` can correctly flag *any* factory creation unconditionally. Python's `xml.etree`/`xml.dom.minidom` (stdlib) and JS's common XML libraries don't resolve external entities by default at all — an unconditional flag there would be mostly false alarms, so neither gets a rule, and `py-xxe` targets `lxml` specifically, the one common Python XML library where entity resolution is an explicit opt-in (`resolve_entities=True`) rather than a default to avoid. `php-xxe` and `ruby-xxe` are single named-flag/constant checks (`libxml_disable_entity_loader(false)`, `Nokogiri::XML::ParseOptions::NOENT`/`config.noent`) for the same reason — PHP 8+ disables external entity loading by default (this rule only matters pre-8 or where something explicitly re-enables it) and Nokogiri only substitutes entities when a caller explicitly asks for `NOENT`. Go's `encoding/xml` never resolves external entities at all (no rule, correctly) — none of this is "less coverage," it's matching each language's actual default behavior instead of assuming Java's.
+
+- **`*-weak-cipher` (Go/Java/JS/Python/PHP/Ruby) matches the algorithm name/class only, same tradeoff as `*-weak-hash`.** A same-named unrelated identifier (a user-defined `DES` class, a variable named `des`) isn't ruled out — no type resolution behind any of these. Python's version is the only one split into two independent queries (a weak cipher *class* — `DES`/`DES3`/`ARC4`/`Blowfish` — versus ECB *mode* used with any cipher, including AES) because pycryptodome expresses cipher choice and mode as two separate arguments rather than one algorithm string the way Java/JS/PHP/Ruby's OpenSSL-style APIs do; a call matching both (`DES.new(key, DES.MODE_ECB)`) is reported once, not twice.
+- **`js-yaml-unsafe-load` flags `yaml.load(...)`/`YAML.load(...)` with no `schema:` option, and that's a real version caveat, not silently overstated.** js-yaml v4 (2021+) made `load()` safe by default and removed the vulnerable types entirely, so this rule's signal is strongest against the still-widely-deployed js-yaml v3 and earlier; ojo has no lockfile-version check, so it can't tell which major version a given `yaml.load(...)` call site is actually running against. An explicit `schema:` option is treated as a deliberate choice either way and skipped, same false-positive-avoidance shape as `java-yaml-unsafe-load`'s zero-constructor-arg check. Ruby's equivalent isn't a separate rule: `YAML.load(...)` (as opposed to `.safe_load`) is already covered under `ruby-insecure-deserialization`, filed there because Ruby's Marshal/YAML unsafe-load sinks share the exact same "arbitrary object construction from untrusted input" shape and message.
+- **`php-mass-assignment` requires the argument to be a direct `->all()` call, not any tainted value.** `Model::create($request->all())`/`->fill($request->all())`/`->update($request->all())`/`->forceFill($request->all())` match; a real allowlist (`$request->only([...])`) or a filtered array built some other way doesn't, by construction — same "whole-argument shape, not per-key taint" precedent as the NoSQLi rules. No import/type verification that `$request` is actually an Illuminate `Request` or that the receiver is actually an Eloquent model — same "flag the candidate" tradeoff as `ruby-mass-assignment`'s `params.permit!`.
+- **`java-jwt-none-algorithm` matches two specific named APIs (`Algorithm.none()`, `SignatureAlgorithm.NONE`), not every Java JWT library's equivalent.** Covers the two dominant libraries (auth0 java-jwt, jjwt); a different library's own "no signature" constant or factory method wouldn't match — same per-library naming ceiling `go-jwt-none-algorithm` already documents for `jwt.SigningMethodNone`.
 
 Rules that overlap with the [secret scanner](secret.md) (`go-hardcoded-secret`, `py-hardcoded-secret`, `js-hardcoded-secret`, `php-hardcoded-secret`, `ruby-hardcoded-secret`, `java-hardcoded-secret`) are intentional, not redundant: the secret scanner does line-level regex over raw text; these rules work on the actual parse tree, catching multi-line/formatted literals the regex misses and correctly ignoring matches inside comments or non-assignment string literals.

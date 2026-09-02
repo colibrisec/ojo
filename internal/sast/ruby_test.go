@@ -219,3 +219,31 @@ func TestRubyScanFindsCookieMissingFlags(t *testing.T) {
 		t.Errorf("expected 3 ruby-cookie-missing-flags issues (1 for plain-value assign, 2 for the partial hash), got %d: %+v", count, issues)
 	}
 }
+
+const rubyWeakCipherRules = `
+c1 = OpenSSL::Cipher.new('DES-EDE3-CBC')
+c2 = OpenSSL::Cipher.new('AES-128-ECB')
+c3 = OpenSSL::Cipher.new('aes-256-gcm')
+`
+
+func TestRubyScanFindsWeakCipher(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "cipher.rb"), []byte(rubyWeakCipherRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count := 0
+	for _, i := range issues {
+		if i.RuleID == "ruby-weak-cipher" {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Errorf("expected 2 ruby-weak-cipher issues (DES + ECB, not the AES-GCM call), got %d: %+v", count, issues)
+	}
+}
