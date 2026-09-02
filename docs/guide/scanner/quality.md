@@ -1,6 +1,6 @@
 # Scanner: Code Quality
 
-Maintainability smells, not vulnerabilities: cyclomatic complexity, function length, nesting depth, parameter count, and cross-file duplicate code. Covers Go, Python, JavaScript/TypeScript, PHP, Ruby, and Java.
+Maintainability smells, not vulnerabilities: cyclomatic complexity, function length, nesting depth, parameter count, cross-file duplicate code, and tracked TODO/FIXME comments. Covers Go, Python, JavaScript/TypeScript, PHP, Ruby, and Java.
 
 Off by default — enable with `--scanners quality`.
 
@@ -15,6 +15,7 @@ This is a genuinely different problem shape from the [SAST scanner](sast.md) and
 | `quality-nesting-depth` | LOW | 4 | Nested control-flow blocks (if/for/while/switch/try) deeper than that |
 | `quality-parameter-count` | LOW | 5 | A function/method taking more parameters than that |
 | `quality-duplicate-code` | MEDIUM | 6 significant lines, ≥30 non-whitespace chars | A block of code that also appears elsewhere in the scanned tree |
+| `quality-todo-comment` | INFO | n/a | A comment containing `TODO`/`FIXME`/`HACK`/`XXX` (SonarQube's own S1135/S1134, generalized to the four markers real codebases actually use) |
 
 None of the thresholds are currently configurable — hardcoded, documented here. Configurability (per-project `.ojo.yaml` overrides) is a natural follow-up, not built yet.
 
@@ -33,6 +34,10 @@ Deliberately **line-based, not token/AST-based** — a "least effort, still corr
 
 Algorithm: normalize each file to its non-blank, whitespace-trimmed lines (keeping a mapping back to real line numbers); slide a 6-line window across every file, hashing each window; group by hash across the whole scanned tree. A hash with 2+ occurrences is a duplicate — each match is then *extended* forward line-by-line as far as every occurrence keeps matching in lock-step, so what's reported is the actual full duplicate block, not just the minimum 6-line window. Windows below ~30 non-whitespace characters are skipped (filters trivial matches like runs of `}`), and once a block is reported, later overlapping windows in the same file are skipped so one long duplicate doesn't produce a spam of findings.
 
+## Tracked comments (TODO/FIXME/HACK/XXX)
+
+Matched against real *comment* node text only, not a raw regex over the whole file — a string literal or identifier that happens to contain one of these words is never flagged, verified per language rather than assumed: Python/JS/TS/TSX/PHP/Ruby all use a single `comment` node type for both `//`-style and block comments; Java is the one language that splits this into two node types (`line_comment`/`block_comment`), confirmed by dumping a real parse tree before writing the check. Go uses `go/parser`'s own `ast.File.Comments`. Matching is case-insensitive (`// todo:` is exactly as common in real code as `// TODO:`) with a word boundary on both sides, so `hackathon` doesn't match `HACK`. Severity is INFO — this is a tracking rule, not a defect report, same as Sonar's own default severity for S1135/S1134.
+
 ## Honest ceiling
 
 - **Cyclomatic complexity's decision-point table is the common/core branch constructs, not exhaustive.** Verified directly against each grammar (same discipline as every SAST rule) before writing any code, but scoped to what's common: `if`/`elif`/`for`/`while`/`switch`-`case`/`catch`/ternary/`&&`/`||` and their per-language equivalents. **Not counted**: Python `match` statements (3.10+), JS `for-in`/`for-of`/`do-while`, Java enhanced-`for`, Ruby `unless`/`until`, PHP `match` expressions. Code using these constructs will show a slightly lower complexity than it should — a real, documented gap, not a claim of exhaustive coverage. Add them if they turn out to matter in practice.
@@ -42,3 +47,4 @@ Algorithm: normalize each file to its non-blank, whitespace-trimmed lines (keepi
 - **Parameter counting is best-effort for single-argument lambdas without parentheses** (e.g. Ruby's `->(x) { x }` parses fine, but some grammars' single-unparenthesized-parameter forms may not expose the same `parameters` field shape) — low practical impact, since undercounting a 1-parameter lambda to 0 never crosses the 5-parameter threshold anyway.
 - **Duplicate detection is textual, not semantic.** Renaming a variable, reordering independent statements, or reformatting breaks the match — this finds copy-paste duplicates, not refactoring opportunities a human reviewer would recognize as "the same logic." That's the deliberate tradeoff for staying language-agnostic and dependency-free; a genuine semantic-clone detector is a different, much larger feature.
 - **No GitLab Code Quality report.** `-g/--gitlab` writes four GitLab security report formats (dependency scanning, SAST, secret detection, SBOM) but not GitLab's separate CodeClimate-compatible `gl-code-quality-report.json` format — `quality` findings currently only reach GitLab via the generic JSON/SARIF/table outputs, not a dedicated CI integration. A natural follow-up, not built yet.
+- **Magic-number detection (SonarQube's S109) was considered for this round and deliberately declined, not silently skipped.** Even Sonar's own S109 is widely disabled in real projects because the noise-to-signal ratio is bad without careful scoping: loop bounds, array indices, and HTTP status codes are all "magic numbers" by the literal rule definition but aren't bugs, and getting the exclusion list right (declaration-initializer values, loop headers, index expressions) needs its own accuracy-focused pass across five different grammars' expression shapes — the same bar every SAST rule in this codebase is held to before shipping. Unused-variable/import detection has the same story for a different reason: it needs real scope resolution (which names are declared vs. referenced, without false-positiving on shadowing or per-language "intentionally unused" conventions like Python's `_`) rather than the syntax-only pattern matching every check in this file relies on, and Go's compiler already rejects unused locals at build time regardless. Both are real candidates for a future round once scoped properly — not ruled out, just not rushed.
