@@ -31,6 +31,7 @@ var phpRules = []phpRule{
 	{"php-command-injection", "HIGH", checkPHPCommandInjection},
 	{"php-sql-injection", "HIGH", checkPHPSQLInjection},
 	{"php-weak-hash", "LOW", checkPHPWeakHash},
+	{"php-weak-cipher", "MEDIUM", checkPHPWeakCipher},
 	{"php-insecure-deserialization", "HIGH", checkPHPUnserialize},
 	{"php-insecure-random-for-secrets", "INFO", checkPHPInsecureRandom},
 	{"php-tls-verify-disabled", "HIGH", checkPHPTLSVerifyDisabled},
@@ -46,6 +47,7 @@ var phpRules = []phpRule{
 	{"php-nosqli", "HIGH", checkPHPNoSQLi},
 	{"php-unsafe-reflection", "HIGH", checkPHPUnsafeReflection},
 	{"php-predictable-prng-seed", "MEDIUM", checkPHPPredictablePRNGSeed},
+	{"php-mass-assignment", "MEDIUM", checkPHPMassAssignment},
 }
 
 func phpIssueAt(id, severity, path, title, message string, n *gts.Node) model.Issue {
@@ -276,6 +278,28 @@ func checkPHPWeakHash(root *gts.Node, src []byte, path string) []model.Issue {
 		}
 		issues = append(issues, phpIssueAt("php-weak-hash", "LOW", path,
 			"Weak hash algorithm", "hash('"+alg+"', ...) is cryptographically broken; use 'sha256' or stronger",
+			caps["call"]))
+	}
+	return issues
+}
+
+var phpOpensslCipherQuery = mustPHPQuery(`(function_call_expression function: (name) @fname arguments: (arguments . (argument (_)) . (argument (string) @alg)) (#any-of? @fname "openssl_encrypt" "openssl_decrypt")) @call`)
+
+// checkPHPWeakCipher flags openssl_encrypt/openssl_decrypt's second
+// (cipher-method) argument naming a broken cipher (DES/RC4) or an insecure
+// mode (ECB) — same name-in-algorithm-string signal as
+// java-weak-cipher/js-weak-cipher, against PHP's OpenSSL method strings.
+func checkPHPWeakCipher(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range phpOpensslCipherQuery.ExecuteNode(root, phpLang, src) {
+		caps := phpCapMap(m)
+		alg := trimPHPQuotes(string(caps["alg"].Text(src)))
+		upper := strings.ToUpper(alg)
+		if !strings.Contains(upper, "DES") && !strings.Contains(upper, "RC4") && !strings.Contains(upper, "ECB") {
+			continue
+		}
+		issues = append(issues, phpIssueAt("php-weak-cipher", "MEDIUM", path,
+			"Weak cipher or insecure mode", string(caps["fname"].Text(src))+"(..., '"+alg+"', ...) uses a broken cipher or an insecure mode (ECB); use 'aes-256-gcm' instead",
 			caps["call"]))
 	}
 	return issues
@@ -621,6 +645,36 @@ func checkPHPCookieMissingFlags(root *gts.Node, src []byte, path string) []model
 				"httponly not passed to setcookie", "setcookie(...) is missing the trailing $httponly parameter; it defaults to false, weakening cookie protection",
 				caps["call"]))
 		}
+	}
+	return issues
+}
+
+// phpMassAssignInstanceQuery matches Laravel's instance-method mass-assignment
+// sinks: $model->fill($request->all())/->update(...)/->forceFill(...).
+// phpMassAssignStaticQuery matches the static form: Model::create(...).
+// Both require the argument to be a direct ->all() call — a real filter
+// array (even one built from request data per-key) doesn't match, same
+// "whole-argument, not a value inside it" shape as ruby-mass-assignment and
+// the NoSQLi rules' *TaintedArg checks.
+var (
+	phpMassAssignInstanceQuery = mustPHPQuery(`(member_call_expression name: (name) @meth arguments: (arguments . (argument (member_call_expression name: (name) @innerMeth))) (#any-of? @meth "fill" "update" "forceFill") (#eq? @innerMeth "all")) @call`)
+	phpMassAssignStaticQuery   = mustPHPQuery(`(scoped_call_expression name: (name) @meth arguments: (arguments . (argument (member_call_expression name: (name) @innerMeth))) (#eq? @meth "create") (#eq? @innerMeth "all")) @call`)
+)
+
+func checkPHPMassAssignment(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range phpMassAssignInstanceQuery.ExecuteNode(root, phpLang, src) {
+		caps := phpCapMap(m)
+		meth := string(caps["meth"].Text(src))
+		issues = append(issues, phpIssueAt("php-mass-assignment", "MEDIUM", path,
+			"Mass assignment from unfiltered request input", "->"+meth+"($request->all()) assigns every request field to the model, including ones a real form never exposes; use $request->only([...]) or a $fillable/$guarded allowlist",
+			caps["call"]))
+	}
+	for _, m := range phpMassAssignStaticQuery.ExecuteNode(root, phpLang, src) {
+		caps := phpCapMap(m)
+		issues = append(issues, phpIssueAt("php-mass-assignment", "MEDIUM", path,
+			"Mass assignment from unfiltered request input", "::create($request->all()) assigns every request field to the model, including ones a real form never exposes; use $request->only([...]) or a $fillable/$guarded allowlist",
+			caps["call"]))
 	}
 	return issues
 }

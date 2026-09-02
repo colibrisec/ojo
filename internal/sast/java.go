@@ -45,6 +45,7 @@ var javaRules = []javaRule{
 	{"java-eval-detected", "HIGH", checkJavaEvalDetected},
 	{"java-unsafe-reflection", "HIGH", checkJavaUnsafeReflection},
 	{"java-predictable-prng-seed", "MEDIUM", checkJavaPredictablePRNGSeed},
+	{"java-jwt-none-algorithm", "HIGH", checkJavaJWTNoneAlgorithm},
 }
 
 func javaIssueAt(id, severity, path, title, message string, n *gts.Node) model.Issue {
@@ -546,6 +547,31 @@ func checkJavaCookieMissingFlags(root *gts.Node, src []byte, path string) []mode
 					call))
 			}
 		}
+	}
+	return issues
+}
+
+// javaJWTNoneMethodQuery matches auth0 java-jwt's Algorithm.none(), which
+// constructs an unsecured-JWT signer/verifier directly.
+// javaJWTNoneFieldQuery matches jjwt's SignatureAlgorithm.NONE constant,
+// used the same way Go's jwt.SigningMethodNone is: passed wherever the
+// library expects a signing algorithm, accepting unsigned tokens.
+var (
+	javaJWTNoneMethodQuery = mustJavaQuery(`(method_invocation object: (identifier) @cls name: (identifier) @m (#eq? @cls "Algorithm") (#eq? @m "none")) @call`)
+	javaJWTNoneFieldQuery  = mustJavaQuery(`(field_access object: (identifier) @cls field: (identifier) @f (#eq? @cls "SignatureAlgorithm") (#eq? @f "NONE")) @call`)
+)
+
+func checkJavaJWTNoneAlgorithm(root *gts.Node, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range javaJWTNoneMethodQuery.ExecuteNode(root, javaLang, src) {
+		issues = append(issues, javaIssueAt("java-jwt-none-algorithm", "HIGH", path,
+			"JWT algorithm set to 'none'", "Algorithm.none() accepts unsigned tokens, allowing signature bypass",
+			javaCapMap(m)["call"]))
+	}
+	for _, m := range javaJWTNoneFieldQuery.ExecuteNode(root, javaLang, src) {
+		issues = append(issues, javaIssueAt("java-jwt-none-algorithm", "HIGH", path,
+			"JWT algorithm set to 'none'", "SignatureAlgorithm.NONE accepts unsigned tokens, allowing signature bypass",
+			javaCapMap(m)["call"]))
 	}
 	return issues
 }

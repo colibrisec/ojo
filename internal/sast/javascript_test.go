@@ -212,3 +212,62 @@ func TestJSScanFindsCookieMissingFlags(t *testing.T) {
 		t.Errorf("expected 3 js-cookie-missing-flags issues (1 for no-options call, 2 for the partial-options call), got %d: %+v", count, issues)
 	}
 }
+
+const jsWeakCipherRules = `function enc() {
+  const c1 = crypto.createCipheriv('des-ede3-cbc', key, iv);
+  const c2 = crypto.createCipher('rc4', password);
+  const c3 = crypto.createCipheriv('aes-128-ecb', key, iv);
+  const c4 = crypto.createCipheriv('aes-256-gcm', key, iv);
+}
+`
+
+func TestJSScanFindsWeakCipher(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "cipher.js"), []byte(jsWeakCipherRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count := 0
+	for _, i := range issues {
+		if i.RuleID == "js-weak-cipher" {
+			count++
+		}
+	}
+	if count != 3 {
+		t.Errorf("expected 3 js-weak-cipher issues (DES/RC4/ECB, not the AES-GCM call), got %d: %+v", count, issues)
+	}
+}
+
+const jsYAMLUnsafeLoadRules = `const yaml = require('js-yaml');
+function parse(userInput) {
+  const a = yaml.load(userInput);
+  const b = yaml.load(userInput, { schema: yaml.FAILSAFE_SCHEMA });
+}
+`
+
+func TestJSScanFindsYAMLUnsafeLoad(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "yaml.js"), []byte(jsYAMLUnsafeLoadRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count := 0
+	for _, i := range issues {
+		if i.RuleID == "js-yaml-unsafe-load" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected 1 js-yaml-unsafe-load issue (the bare load, not the explicit-schema one), got %d: %+v", count, issues)
+	}
+}
