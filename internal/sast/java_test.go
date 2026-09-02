@@ -223,3 +223,42 @@ func TestJavaScanFindsJWTNoneAlgorithm(t *testing.T) {
 		t.Errorf("expected 3 java-jwt-none-algorithm issues (2 Algorithm.none() calls + 1 SignatureAlgorithm.NONE, not the HS256 signWith), got %d: %+v", count, issues)
 	}
 }
+
+const javaReliabilityRules = `class App {
+    void a() {
+        try { f(); } catch (Exception e) { }
+        try { f(); } catch (Exception e) { log(e); }
+        if (x) { }
+        if (x) { } else { }
+        while (x) { }
+        for (int i=0;i<3;i++) { }
+        if (x) { return; y(); }
+    }
+}
+`
+
+func TestJavaScanFindsReliabilityRules(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Reliability.java"), []byte(javaReliabilityRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	counts := map[string]int{}
+	for _, i := range issues {
+		counts[i.RuleID]++
+	}
+	if counts["java-empty-exception-handler"] != 1 {
+		t.Errorf("expected 1 java-empty-exception-handler issue (not the catch that logs), got %d: %+v", counts["java-empty-exception-handler"], issues)
+	}
+	if counts["java-empty-block"] != 5 {
+		t.Errorf("expected 5 java-empty-block issues (empty if, empty if+else=2, empty while, empty for), got %d: %+v", counts["java-empty-block"], issues)
+	}
+	if counts["java-unreachable-code"] != 1 {
+		t.Errorf("expected 1 java-unreachable-code issue, got %d: %+v", counts["java-unreachable-code"], issues)
+	}
+}

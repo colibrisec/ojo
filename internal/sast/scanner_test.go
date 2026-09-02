@@ -196,3 +196,45 @@ func TestScanFindsGoCookieMissingFlags(t *testing.T) {
 		t.Errorf("expected 2 go-cookie-missing-flags issues (Secure + HttpOnly missing on the first cookie only), got %d: %+v", count, issues)
 	}
 }
+
+const goEmptyBlockRules = `package main
+
+func handler(err error) {
+	if err != nil {
+	}
+	if err != nil {
+		_ = err
+	}
+	for i := 0; i < 3; i++ {
+	}
+	for range []int{1, 2, 3} {
+	}
+	if err == nil {
+	} else {
+	}
+}
+`
+
+func TestScanFindsGoEmptyBlock(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "handler4.go"), []byte(goEmptyBlockRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count := 0
+	for _, i := range issues {
+		if i.RuleID == "go-empty-block" {
+			count++
+		}
+	}
+	// empty if(1) + empty for(1) + empty for-range(1) + empty if/else(2) = 5;
+	// the if that assigns _ = err is not empty and doesn't count.
+	if count != 5 {
+		t.Errorf("expected 5 go-empty-block issues, got %d: %+v", count, issues)
+	}
+}

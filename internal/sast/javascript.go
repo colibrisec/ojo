@@ -76,6 +76,9 @@ var jsRules = []jsRule{
 	{"js-ssti", "HIGH", checkJSSSTI},
 	{"js-nosqli", "HIGH", checkJSNoSQLi},
 	{"js-unsafe-reflection", "HIGH", checkJSUnsafeReflection},
+	{"js-empty-exception-handler", "MEDIUM", checkJSEmptyExceptionHandler},
+	{"js-empty-block", "LOW", checkJSEmptyBlock},
+	{"js-unreachable-code", "LOW", checkJSUnreachableCode},
 }
 
 func jsIssueAt(id, severity, path, title, message string, n *gts.Node) model.Issue {
@@ -720,6 +723,68 @@ func checkJSCookieMissingFlags(root *gts.Node, lang *gts.Language, src []byte, p
 				flag+" not set on cookie options", "cookie(...) options object doesn't set "+flag+"; it defaults to false, weakening cookie protection unless set elsewhere",
 				opts))
 		}
+	}
+	return issues
+}
+
+// checkJSEmptyExceptionHandler flags an empty catch block, which silently
+// swallows whatever it caught — SonarQube's S2486/S1166, ESLint's own
+// core no-empty rule (catch clause) covers the identical shape.
+var jsCatchQuery = mustTriQuery(`(catch_clause body: (statement_block) @body) @catch`)
+
+func checkJSEmptyExceptionHandler(root *gts.Node, lang *gts.Language, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range jsCatchQuery.forLang(lang).ExecuteNode(root, lang, src) {
+		caps := jsCapMap(m)
+		if caps["body"].NamedChildCount() > 0 {
+			continue
+		}
+		issues = append(issues, jsIssueAt("js-empty-exception-handler", "MEDIUM", path,
+			"Empty catch block", "catch (...) { } silently swallows the exception, hiding real failures; at minimum log it",
+			caps["catch"]))
+	}
+	return issues
+}
+
+// checkJSEmptyBlock flags an if/else/while/for body with no statements at
+// all (SonarQube's S108) — almost always dead code, or (in the if-branch
+// case) a silently-swallowed condition.
+var (
+	jsIfBodyQuery   = mustTriQuery(`(if_statement consequence: (statement_block) @body) @stmt`)
+	jsElseBodyQuery = mustTriQuery(`(else_clause (statement_block) @body) @stmt`)
+	jsWhileQuery    = mustTriQuery(`(while_statement body: (statement_block) @body) @stmt`)
+	jsForBodyQuery  = mustTriQuery(`(for_statement body: (statement_block) @body) @stmt`)
+)
+
+func checkJSEmptyBlock(root *gts.Node, lang *gts.Language, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for shape, q := range map[string]triQuery{
+		"if": jsIfBodyQuery, "else": jsElseBodyQuery, "while": jsWhileQuery, "for": jsForBodyQuery,
+	} {
+		for _, m := range q.forLang(lang).ExecuteNode(root, lang, src) {
+			caps := jsCapMap(m)
+			if caps["body"].NamedChildCount() > 0 {
+				continue
+			}
+			issues = append(issues, jsIssueAt("js-empty-block", "LOW", path,
+				"Empty "+shape+" block", shape+" body has no statements — likely dead code, or (if this is an error check) a silently-swallowed condition",
+				caps["stmt"]))
+		}
+	}
+	return issues
+}
+
+// checkJSUnreachableCode flags a statement immediately following a
+// return/throw/break/continue in the same block — SonarQube's S1763.
+var jsUnreachableQuery = mustTriQuery(`(statement_block [(return_statement) (throw_statement) (break_statement) (continue_statement)] @term . (_) @after)`)
+
+func checkJSUnreachableCode(root *gts.Node, lang *gts.Language, src []byte, path string) []model.Issue {
+	var issues []model.Issue
+	for _, m := range jsUnreachableQuery.forLang(lang).ExecuteNode(root, lang, src) {
+		caps := jsCapMap(m)
+		issues = append(issues, jsIssueAt("js-unreachable-code", "LOW", path,
+			"Unreachable code", "this statement can never execute; it follows a "+string(caps["term"].Text(src))+" in the same block",
+			caps["after"]))
 	}
 	return issues
 }
