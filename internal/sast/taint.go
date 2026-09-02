@@ -50,10 +50,32 @@ func inspectWithinFunc(body *ast.BlockStmt, fn func(ast.Node) bool) {
 	})
 }
 
+// goCurrentParamSeed holds this file's precomputed same-file interprocedural
+// parameter taint seeds (see goComputeParamSeed), keyed by function body —
+// set once per file by Scan before that file's rules run, consulted
+// transparently by goTaintEnv so none of rules.go's six call sites need to
+// change.
+//
+// ponytail: file-scoped global, relies on Scan processing one file at a
+// time sequentially — would need a per-goroutine/per-call context instead
+// if file scanning is ever parallelized.
+var goCurrentParamSeed map[*ast.BlockStmt]map[string]bool
+
 // goTaintEnv returns the set of local variable names assigned (directly or
 // transitively) from tainted input somewhere in body.
 func goTaintEnv(body *ast.BlockStmt) map[string]bool {
+	return goTaintEnvWithSeed(body, goCurrentParamSeed[body])
+}
+
+// goTaintEnvWithSeed is goTaintEnv's actual implementation, taking an
+// explicit initial taint set instead of consulting the package-level
+// goCurrentParamSeed — used by goComputeParamSeed itself, which needs to
+// build each round's per-function env from its own in-progress seed map.
+func goTaintEnvWithSeed(body *ast.BlockStmt, seed map[string]bool) map[string]bool {
 	env := map[string]bool{}
+	for name := range seed {
+		env[name] = true
+	}
 	for range 2 { // second pass catches vars tainted via a var assigned later in source order
 		inspectWithinFunc(body, func(n ast.Node) bool {
 			assign, ok := n.(*ast.AssignStmt)
@@ -76,6 +98,102 @@ func goTaintEnv(body *ast.BlockStmt) map[string]bool {
 		})
 	}
 	return env
+}
+
+// goInterprocFuncInfo captures one same-file, top-level free function's
+// positional parameter names and body — used to build a same-file call
+// graph. Free functions only, no methods: a Go method call needs the
+// receiver's concrete type resolved to know which method it targets, the
+// same "flag the candidate, not type-verified" line every rule in this
+// codebase already draws, just applied to call resolution instead of a
+// single call site.
+type goInterprocFuncInfo struct {
+	params []string
+	body   *ast.BlockStmt
+}
+
+func goBuildFuncRegistry(f *ast.File) map[string]goInterprocFuncInfo {
+	reg := map[string]goInterprocFuncInfo{}
+	for _, decl := range f.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Recv != nil || fn.Body == nil {
+			continue
+		}
+		reg[fn.Name.Name] = goInterprocFuncInfo{params: goParamNames(fn.Type.Params), body: fn.Body}
+	}
+	return reg
+}
+
+func goParamNames(params *ast.FieldList) []string {
+	if params == nil {
+		return nil
+	}
+	var names []string
+	for _, field := range params.List {
+		if len(field.Names) == 0 {
+			names = append(names, "") // unnamed parameter (interface-style signature): never matches a real taint check
+			continue
+		}
+		for _, n := range field.Names {
+			names = append(names, n.Name)
+		}
+	}
+	return names
+}
+
+// goComputeParamSeed closes the "sink inside a helper function" gap
+// documented at the top of this file: a same-file call graph among free
+// functions, iterated a fixed 3 rounds (mirroring goTaintEnv's own
+// 2-round bounded-iteration precedent — taint state only ever grows across
+// rounds, so a recursive/cyclic call chain just stops improving within the
+// round budget instead of looping forever). For each call site passing a
+// tainted argument to a same-file free function, the corresponding
+// parameter name is seeded as an additional taint source for that
+// function's own body — so a sink rule using that parameter directly
+// fires at its real location inside the callee, without any change to the
+// sink rules themselves.
+//
+// Deliberately NOT built: return-value taint propagation. goExprTainted's
+// CallExpr case already treats *any* call containing a tainted argument as
+// tainted overall, regardless of what the callee does with it (pinned by
+// TestGoTaintDoesNotCrossFunctionCalls) — a real limitation in the other
+// direction (it can't recognize genuine sanitization, so it over-taints),
+// but it means return-taint propagation is already covered, more broadly
+// than a same-file registry could manage alone (it already works for
+// calls this file can't see the body of at all).
+func goComputeParamSeed(f *ast.File) map[*ast.BlockStmt]map[string]bool {
+	reg := goBuildFuncRegistry(f)
+	seed := map[*ast.BlockStmt]map[string]bool{}
+	for round := 0; round < 3; round++ {
+		for _, info := range reg {
+			env := goTaintEnvWithSeed(info.body, seed[info.body])
+			inspectWithinFunc(info.body, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				id, ok := call.Fun.(*ast.Ident)
+				if !ok {
+					return true
+				}
+				callee, ok := reg[id.Name]
+				if !ok {
+					return true
+				}
+				for i, arg := range call.Args {
+					if i >= len(callee.params) || callee.params[i] == "" || !goExprTainted(arg, env) {
+						continue
+					}
+					if seed[callee.body] == nil {
+						seed[callee.body] = map[string]bool{}
+					}
+					seed[callee.body][callee.params[i]] = true
+				}
+				return true
+			})
+		}
+	}
+	return seed
 }
 
 // goExprTainted reports whether e evaluates from tainted input: rooted at
