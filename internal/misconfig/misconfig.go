@@ -22,6 +22,7 @@ func newIssue(ruleID, severity, path string, line int, title, message string) mo
 		File:     path,
 		Line:     line,
 		Message:  message,
+		CWEs:     ruleCWEs[ruleID],
 	}
 }
 
