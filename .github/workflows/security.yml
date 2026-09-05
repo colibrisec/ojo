@@ -1,0 +1,31 @@
+name: security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1' # weekly, Monday 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: colibrisec/ojo-action@v1
+
+      - name: Upload to Balam
+        if: ${{ always() && github.event_name != 'pull_request' && hashFiles('ojo-report.json') != '' }}
+        uses: colibrisec/balam-action@v1
+        with:
+          file: ojo-report.json
+          scan-type: 'OJO Scan'
+          balam-url: ${{ secrets.BALAM_URL }}
+          balam-token: ${{ secrets.BALAM_TOKEN }}
+          product-name: ojo
+          engagement-name: main
