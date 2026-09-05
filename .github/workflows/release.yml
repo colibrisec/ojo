@@ -170,6 +170,8 @@ jobs:
   docker:
     needs: [version, test]
     runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -178,7 +180,8 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v7
+      - id: build
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -187,6 +190,37 @@ jobs:
           tags: |
             ghcr.io/colibrisec/ojo:${{ needs.version.outputs.version }}
             ghcr.io/colibrisec/ojo:latest
+
+  # Scans the image just pushed to GHCR and attaches the report to it as a
+  # GitHub attestation (an OCI referrer on the image's digest, visible under
+  # the package's Attestations tab) -- keyed by digest, not tag, since tags
+  # are mutable and :latest gets reused on every release.
+  image-scan:
+    needs: [docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: colibrisec/ojo-action@eaca3b80c9dc65989dac29ac6dd5f6cf8b2deb9d # v1
+        with:
+          vulnerabilities: 'false'
+          secrets: 'false'
+          iac: 'false'
+          sast: 'false'
+          image: ghcr.io/colibrisec/ojo@${{ needs.docker.outputs.digest }}
+      - uses: actions/attest@v4
+        if: ${{ hashFiles('ojo-image-report.json') != '' }}
+        with:
+          subject-name: ghcr.io/colibrisec/ojo
+          subject-digest: ${{ needs.docker.outputs.digest }}
+          predicate-type: 'https://colibrisec.dev/attestations/ojo-scan/v1'
+          predicate-path: ojo-image-report.json
+          push-to-registry: true
 
   # Pushes an updated Formula/ojo.rb to the colibrisec/homebrew-tap repo.
   # Requires a HOMEBREW_TAP_TOKEN secret (fine-grained PAT scoped to just
