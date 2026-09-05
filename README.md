@@ -4,6 +4,7 @@
 [![ojo-scanner](https://snapcraft.io/ojo-scanner/trending.svg?name=0)](https://snapcraft.io/ojo-scanner)
 [![release](https://github.com/colibrisec/ojo/actions/workflows/release.yml/badge.svg)](https://github.com/colibrisec/ojo/actions/workflows/release.yml)
 [![ci](https://github.com/colibrisec/ojo/actions/workflows/ci.yml/badge.svg)](https://github.com/colibrisec/ojo/actions/workflows/ci.yml)
+[![security](https://github.com/colibrisec/ojo/actions/workflows/security.yml/badge.svg)](https://github.com/colibrisec/ojo/actions/workflows/security.yml)
 [![Go Coverage](https://github.com/colibrisec/ojo/wiki/coverage.svg)](https://raw.githack.com/wiki/colibrisec/ojo/coverage.html)
 
 ojo is an open source security scanner for dependencies, secrets, misconfiguration, and code — a single self-contained Go binary, no daemon, no local database to sync.
