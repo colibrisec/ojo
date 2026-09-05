@@ -21,11 +21,11 @@ jobs:
 
       - name: Upload to Balam
         if: ${{ always() && github.event_name != 'pull_request' && hashFiles('ojo-report.json') != '' }}
-        uses: colibrisec/balam-action@v1
+        uses: colibrisec/balam-action@88a6df7e085a860ea6d11719789bb197807c0402 # v1
         with:
           file: ojo-report.json
           scan-type: 'OJO Scan'
           balam-url: ${{ secrets.BALAM_URL }}
           balam-token: ${{ secrets.BALAM_TOKEN }}
           product-name: ojo
-          engagement-name: main
+          engagement-name: 'CI Scans'
