@@ -17,7 +17,7 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - uses: colibrisec/ojo-action@eaca3b80c9dc65989dac29ac6dd5f6cf8b2deb9d # v1
+      - uses: colibrisec/ojo-action@8aa63c11ada586530af7abee55a127ed2cfd6a0b # v1.1.1
 
       - name: Upload to Balam
         if: ${{ always() && github.event_name != 'pull_request' && hashFiles('ojo-report.json') != '' }}
