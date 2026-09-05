@@ -95,6 +95,7 @@ func Scan(root string, extraRules []Rule) ([]model.Issue, error) {
 					Line:     lineNum,
 					Match:    redact(line),
 					Message:  fmt.Sprintf("%s detected", r.Description),
+					CWEs:     ruleCWEs[r.ID],
 				})
 			}
 		}

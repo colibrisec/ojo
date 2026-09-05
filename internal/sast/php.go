@@ -62,6 +62,7 @@ func phpIssueAt(id, severity, path, title, message string, n *gts.Node) model.Is
 		File:     path,
 		Line:     int(n.StartPoint().Row) + 1,
 		Message:  message,
+		CWEs:     cweFor(id),
 	}
 }
 
