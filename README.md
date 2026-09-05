@@ -4,6 +4,7 @@
 [![ojo-scanner](https://snapcraft.io/ojo-scanner/trending.svg?name=0)](https://snapcraft.io/ojo-scanner)
 [![release](https://github.com/colibrisec/ojo/actions/workflows/release.yml/badge.svg)](https://github.com/colibrisec/ojo/actions/workflows/release.yml)
 [![ci](https://github.com/colibrisec/ojo/actions/workflows/ci.yml/badge.svg)](https://github.com/colibrisec/ojo/actions/workflows/ci.yml)
+[![security](https://github.com/colibrisec/ojo/actions/workflows/security.yml/badge.svg)](https://github.com/colibrisec/ojo/actions/workflows/security.yml)
 [![Go Coverage](https://github.com/colibrisec/ojo/wiki/coverage.svg)](https://raw.githack.com/wiki/colibrisec/ojo/coverage.html)
 
 ojo is an open source security scanner for dependencies, secrets, misconfiguration, and code — a single self-contained Go binary, no daemon, no local database to sync.
@@ -16,13 +17,13 @@ $ ojo image python:3.14-slim  # OS package vulnerabilities in a container image
 ## Installation
 
 ```console
-$ brew tap colibrisec/tap && brew install ojo        # macOS
-$ sudo apt install ./ojo_X.Y.Z_linux_amd64.deb        # Debian/Ubuntu
-$ sudo dnf install ojo_X.Y.Z_linux_amd64.rpm           # Fedora/RHEL
-$ sudo snap install ojo-scanner                        # Linux (Snap; command is ojo-scanner)
-$ winget install colibrisec.ojo                        # Windows
-$ docker run --rm ghcr.io/colibrisec/ojo:latest fs --help  # Container
-$ go install github.com/colibrisec/ojo@latest          # go install
+$ brew tap colibrisec/tap && brew install colibrisec/tap/ojo      # macOS
+$ sudo apt install ./ojo_X.Y.Z_linux_amd64.deb                    # Debian/Ubuntu
+$ sudo dnf install ojo_X.Y.Z_linux_amd64.rpm                      # Fedora/RHEL
+$ sudo snap install ojo-scanner                                   # Linux (Snap; command is ojo-scanner)
+$ winget install colibrisec.ojo                                   # Windows
+$ docker run --rm ghcr.io/colibrisec/ojo:latest fs --help         # Container
+$ go install github.com/colibrisec/ojo@latest                     # go install
 ```
 
 Prebuilt binaries (Linux/macOS/Windows, amd64+arm64) and checksums are on the [Releases page](https://github.com/colibrisec/ojo/releases). Full install instructions, including MSI/deb/rpm download URLs and Snap confinement caveats, are in [`docs/getting-started/installation.md`](docs/getting-started/installation.md).
