@@ -28,4 +28,4 @@ jobs:
           balam-url: ${{ secrets.BALAM_URL }}
           balam-token: ${{ secrets.BALAM_TOKEN }}
           product-name: ojo
-          engagement-name: main
+          engagement-name: 'CI Scans'
