@@ -105,18 +105,22 @@ func writeIssueReport(w io.Writer, root, category, schemaVersion, toolVersion st
 		if name == "" {
 			name = iss.RuleID
 		}
+		idents := []glIdentifier{
+			{Type: "ojo_rule_id", Name: iss.RuleID, Value: iss.RuleID},
+		}
+		for _, cwe := range iss.CWEs {
+			idents = append(idents, glIdentifier{Type: "cwe", Name: cwe, Value: cwe, URL: model.CWEURL(cwe)})
+		}
 		vulns = append(vulns, glIssueVuln{
-			ID:       id,
-			Category: category,
-			Name:     name,
-			Message:  iss.Message,
-			CVE:      id,
-			Severity: gitlabSeverity(iss.Severity),
-			Scanner:  glScanner{ID: "ojo", Name: "ojo"},
-			Location: glIssueLoc{File: file, StartLine: iss.Line, EndLine: iss.Line},
-			Identifiers: []glIdentifier{
-				{Type: "ojo_rule_id", Name: iss.RuleID, Value: iss.RuleID},
-			},
+			ID:          id,
+			Category:    category,
+			Name:        name,
+			Message:     iss.Message,
+			CVE:         id,
+			Severity:    gitlabSeverity(iss.Severity),
+			Scanner:     glScanner{ID: "ojo", Name: "ojo"},
+			Location:    glIssueLoc{File: file, StartLine: iss.Line, EndLine: iss.Line},
+			Identifiers: idents,
 		})
 	}
 

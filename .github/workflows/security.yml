@@ -16,7 +16,7 @@ jobs:
       security-events: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: colibrisec/ojo-action@8aa63c11ada586530af7abee55a127ed2cfd6a0b # v1.1.1
 
       - name: Upload to Balam

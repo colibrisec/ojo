@@ -1,6 +1,8 @@
 // Package model holds the core types shared across scan engines and reporters.
 package model
 
+import "strings"
+
 // Ecosystem identifies a package ecosystem in OSV.dev terms.
 type Ecosystem string
 
@@ -55,4 +57,15 @@ type Issue struct {
 	Line     int
 	Match    string
 	Message  string
+
+	// CWEs are the applicable CWE IDs (e.g. "CWE-89"), most relevant first.
+	// A rule can legitimately map to more than one -- e.g. a hardcoded
+	// private key is both CWE-798 (hardcoded credential) and CWE-321
+	// (hardcoded crypto key) -- so this is a slice rather than one field.
+	CWEs []string `json:"cwes,omitempty"`
+}
+
+// CWEURL returns the canonical MITRE reference page for a "CWE-123" style ID.
+func CWEURL(cwe string) string {
+	return "https://cwe.mitre.org/data/definitions/" + strings.TrimPrefix(cwe, "CWE-") + ".html"
 }
