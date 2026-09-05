@@ -100,6 +100,7 @@ func ScanGitHistory(ctx context.Context, root string, extraRules []Rule) ([]mode
 						Line:     lineNum,
 						Match:    redact(content),
 						Message:  fmt.Sprintf("%s detected in git history (commit %s)", r.Description, commit),
+						CWEs:     ruleCWEs[r.ID],
 					})
 				}
 			}

@@ -217,5 +217,6 @@ func issueAt(id, severity, path, title, message string, fset *token.FileSet, pos
 		File:     path,
 		Line:     p.Line,
 		Message:  message,
+		CWEs:     cweFor(id),
 	}
 }

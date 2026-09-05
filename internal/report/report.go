@@ -85,10 +85,14 @@ func IssueTable(w io.Writer, root string, issues []model.Issue) {
 
 	rows := make([][]string, len(sorted))
 	for i, iss := range sorted {
+		rule := iss.RuleID
+		if len(iss.CWEs) > 0 {
+			rule = fmt.Sprintf("%s (%s)", rule, strings.Join(iss.CWEs, ", "))
+		}
 		rows[i] = []string{
 			iss.Severity,
 			fmt.Sprintf("%s:%d", relPath(root, iss.File), iss.Line),
-			iss.RuleID,
+			rule,
 			iss.Message,
 		}
 	}

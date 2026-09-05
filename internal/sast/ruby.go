@@ -61,6 +61,7 @@ func rubyIssueAt(id, severity, path, title, message string, n *gts.Node) model.I
 		File:     path,
 		Line:     int(n.StartPoint().Row) + 1,
 		Message:  message,
+		CWEs:     cweFor(id),
 	}
 }
 
