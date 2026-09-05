@@ -6,6 +6,8 @@ import (
 	"io"
 	"path/filepath"
 	"sort"
+
+	"github.com/colibrisec/ojo/internal/model"
 )
 
 type sarifLog struct {
@@ -59,6 +61,26 @@ func kevProperties(kevFlag bool, dateAdded string) map[string]any {
 	return map[string]any{"kev": true, "kevDateAdded": dateAdded}
 }
 
+// sarifIssueRule builds the rules-table entry for a sast/misconfig/secret
+// finding, pointing HelpURI at the primary (first) CWE when one is known.
+func sarifIssueRule(iss model.Issue) sarifRule {
+	rule := sarifRule{ID: iss.RuleID, ShortDescription: sarifMessage{Text: iss.Title}}
+	if len(iss.CWEs) > 0 {
+		rule.HelpURI = model.CWEURL(iss.CWEs[0])
+	}
+	return rule
+}
+
+// cweProperties surfaces every applicable CWE on the result itself (not
+// just the rule) so a finding with more than one CWE doesn't lose the rest
+// to the rule table's single HelpURI.
+func cweProperties(cwes []string) map[string]any {
+	if len(cwes) == 0 {
+		return nil
+	}
+	return map[string]any{"cwe": cwes}
+}
+
 type sarifSuppression struct {
 	Kind          string `json:"kind"`
 	Justification string `json:"justification,omitempty"`
@@ -104,16 +126,17 @@ func (r Report) SARIF(w io.Writer, root string) error {
 
 	for _, iss := range r.Issues {
 		if _, ok := rules[iss.RuleID]; !ok {
-			rules[iss.RuleID] = sarifRule{ID: iss.RuleID, ShortDescription: sarifMessage{Text: iss.Title}}
+			rules[iss.RuleID] = sarifIssueRule(iss)
 		}
 		var region *sarifRegion
 		if iss.Line > 0 {
 			region = &sarifRegion{StartLine: iss.Line}
 		}
 		results = append(results, sarifResult{
-			RuleID:  iss.RuleID,
-			Level:   sarifLevel(iss.Severity),
-			Message: sarifMessage{Text: iss.Message},
+			RuleID:     iss.RuleID,
+			Level:      sarifLevel(iss.Severity),
+			Message:    sarifMessage{Text: iss.Message},
+			Properties: cweProperties(iss.CWEs),
 			Locations: []sarifLocation{{PhysicalLocation: sarifPhysicalLocation{
 				ArtifactLocation: sarifArtifactLocation{URI: sarifPath(root, iss.File)},
 				Region:           region,
@@ -141,16 +164,17 @@ func (r Report) SARIF(w io.Writer, root string) error {
 	for _, si := range r.SuppressedIssues {
 		iss := si.Issue
 		if _, ok := rules[iss.RuleID]; !ok {
-			rules[iss.RuleID] = sarifRule{ID: iss.RuleID, ShortDescription: sarifMessage{Text: iss.Title}}
+			rules[iss.RuleID] = sarifIssueRule(iss)
 		}
 		var region *sarifRegion
 		if iss.Line > 0 {
 			region = &sarifRegion{StartLine: iss.Line}
 		}
 		results = append(results, sarifResult{
-			RuleID:  iss.RuleID,
-			Level:   sarifLevel(iss.Severity),
-			Message: sarifMessage{Text: iss.Message},
+			RuleID:     iss.RuleID,
+			Level:      sarifLevel(iss.Severity),
+			Message:    sarifMessage{Text: iss.Message},
+			Properties: cweProperties(iss.CWEs),
 			Locations: []sarifLocation{{PhysicalLocation: sarifPhysicalLocation{
 				ArtifactLocation: sarifArtifactLocation{URI: sarifPath(root, iss.File)},
 				Region:           region,
