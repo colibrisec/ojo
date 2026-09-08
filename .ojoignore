@@ -1,0 +1,4 @@
+# <id> <path-glob>  # reason (expires: YYYY-MM-DD)
+dockerfile-latest-tag      Dockerfile  # scratch has no version
+dockerfile-root-user       Dockerfile  # scratch has no user
+dockerfile-no-healthcheck  Dockerfile  # one-shot CLI, no long-running process to health-check

@@ -10,7 +10,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/spf13/cobra v1.10.2
 	github.com/zclconf/go-cty v1.16.3
-	golang.org/x/mod v0.38.0
+	golang.org/x/mod v0.40.0
 	golang.org/x/term v0.45.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -28,9 +28,9 @@ require (
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
-	golang.org/x/sync v0.21.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.39.0 // indirect
-	golang.org/x/tools v0.47.0 // indirect
+	golang.org/x/tools v0.49.0 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
 )
