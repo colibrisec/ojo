@@ -370,3 +370,138 @@ jobs:
           version: ${{ needs.version.outputs.version }}
           release-tag: ${{ needs.version.outputs.version }}
           token: ${{ secrets.WINGET_TOKEN }}
+
+  # Renders the two AUR templates (aur/ojo, aur/ojo-bin) with this
+  # release's version and real sha256sums, and uploads the result as an
+  # artifact so the exact same files get test-built on both arches below
+  # and then pushed to AUR -- nothing is regenerated in between.
+  aur-render:
+    needs: [version, release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: "ojo_linux_*"
+          path: dist
+          merge-multiple: true
+      - name: Render PKGBUILDs
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          ver="${VERSION#v}"
+          sha_src=$(curl -sL "https://github.com/colibrisec/ojo/archive/refs/tags/${VERSION}.tar.gz" | sha256sum | cut -d' ' -f1)
+          sha_amd64=$(sha256sum "dist/ojo_${VERSION}_linux_amd64" | cut -d' ' -f1)
+          sha_arm64=$(sha256sum "dist/ojo_${VERSION}_linux_arm64" | cut -d' ' -f1)
+          mkdir -p out/ojo out/ojo-bin
+          sed -e "s/@PKGVER@/${ver}/" -e "s/@SHA256_SRC@/${sha_src}/" \
+            aur/ojo/PKGBUILD > out/ojo/PKGBUILD
+          sed -e "s/@PKGVER@/${ver}/" -e "s/@SHA256_AMD64@/${sha_amd64}/" -e "s/@SHA256_ARM64@/${sha_arm64}/" \
+            aur/ojo-bin/PKGBUILD > out/ojo-bin/PKGBUILD
+      - uses: actions/upload-artifact@v7
+        with:
+          name: aur-pkgbuilds
+          path: out/*
+
+  # Test-builds both PKGBUILDs (source and -bin) on x86_64, using Arch's
+  # own official container image.
+  aur-test-amd64:
+    needs: [aur-render]
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    strategy:
+      matrix:
+        pkg: [ojo, ojo-bin]
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: aur-pkgbuilds
+          path: pkgbuilds
+      - name: Install build deps
+        run: pacman -Syu --noconfirm --needed go curl
+      - name: makepkg (as unprivileged builder -- makepkg refuses to run as root)
+        run: |
+          useradd -m builder
+          chown -R builder:builder pkgbuilds
+          cd "pkgbuilds/${{ matrix.pkg }}"
+          su builder -c "makepkg --noconfirm --skippgpcheck"
+
+  # Same test-build, natively on aarch64. Arch Linux itself only targets
+  # x86_64 (ARM is the separate Arch Linux ARM/ALARM project), so there's
+  # no official aarch64 Arch container image -- this uses a
+  # community-maintained ALARM one instead, run on GitHub's hosted arm64
+  # runner. Native runner + container, no QEMU, same trick as
+  # package-snap above.
+  aur-test-arm64:
+    needs: [aur-render]
+    runs-on: ubuntu-24.04-arm
+    container: lopsided98/archlinux-aarch64:latest
+    strategy:
+      matrix:
+        pkg: [ojo, ojo-bin]
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: aur-pkgbuilds
+          path: pkgbuilds
+      - name: Init pacman keyring
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinuxarm
+      - name: Install build deps
+        run: pacman -Syu --noconfirm --needed base-devel go curl
+      - name: makepkg (as unprivileged builder -- makepkg refuses to run as root)
+        run: |
+          useradd -m builder
+          chown -R builder:builder pkgbuilds
+          cd "pkgbuilds/${{ matrix.pkg }}"
+          su builder -c "makepkg --noconfirm --skippgpcheck"
+
+  # Pushes the rendered PKGBUILD (+ a freshly generated .SRCINFO) to each
+  # AUR repo. Requires an AUR_SSH_PRIVATE_KEY secret: a passphrase-less
+  # SSH key added at https://aur.archlinux.org/account/colibrisec/ssh-keys,
+  # with AUR_SSH_PRIVATE_KEY holding the matching private key. If that
+  # secret isn't set yet, this job fails but doesn't block binaries/
+  # packages/Docker/Homebrew/snap/winget, which already published above.
+  aur-publish:
+    needs: [version, aur-render, aur-test-amd64, aur-test-arm64]
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    strategy:
+      matrix:
+        pkg: [ojo, ojo-bin]
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: aur-pkgbuilds
+          path: pkgbuilds
+      - name: Install push deps
+        run: pacman -Syu --noconfirm --needed git openssh
+      - name: Generate .SRCINFO (as unprivileged builder -- makepkg refuses to run as root)
+        run: |
+          useradd -m builder
+          chown -R builder:builder pkgbuilds
+          cd "pkgbuilds/${{ matrix.pkg }}"
+          su builder -c "makepkg --printsrcinfo" > .SRCINFO
+      - name: Push to AUR
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          SSH_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o UserKnownHostsFile=~/.ssh/known_hosts"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git clone "ssh://aur@aur.archlinux.org/${{ matrix.pkg }}.git" repo
+          cp "pkgbuilds/${{ matrix.pkg }}/PKGBUILD" "pkgbuilds/${{ matrix.pkg }}/.SRCINFO" repo/
+          cd repo
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then
+            echo "package unchanged"
+          else
+            git commit -m "${{ matrix.pkg }}: ${VERSION#v}"
+            git push
+          fi
