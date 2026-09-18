@@ -162,15 +162,22 @@ algorithm list elsewhere in `internal/misconfig`/`internal/sast`. One
   against the real thing" discipline this codebase already applies to
   tree-sitter grammar onboarding, applied here to fixture generation
   instead of to a parser.
-- One end-to-end sanity test using a real binary manifest: the
+- One end-to-end test using a real binary manifest: the
   `AndroidManifest.xml` entry (1,904 bytes) extracted from
   `shogo82148/androidbinary`'s own MIT-licensed `apk/testdata/helloworld.apk`
   test fixture, committed as
   `internal/misconfig/testdata/android/helloworld_AndroidManifest.xml`
-  with a comment noting its source and license. This manifest is clean
-  (no rules should fire on it) — its purpose is confirming the
-  zip-extract + AXML-decode + XML-parse pipeline works against a genuine
-  binary manifest, not exercising the rules themselves.
+  with a comment noting its source and license. **Correction from an
+  earlier draft of this spec, found by actually decoding it during
+  implementation prototyping rather than assumed:** this manifest is not
+  clean — it has `android:debuggable="true"` and one `<activity>` with an
+  `<intent-filter>` and no explicit `exported`/`permission` attribute
+  (implicitly exported, unguarded), so it genuinely fires both
+  `android-debuggable` and `android-exported-component-no-permission`. It
+  has no `usesCleartextTraffic` attribute and no `<uses-permission>`
+  elements at all, so it does not fire the other two rules. This makes it
+  a real cross-rule end-to-end fixture, not just a decode-pipeline sanity
+  check.
 - Verified end-to-end through the built binary too: a real `.apk`
   (zip containing a synthesized risky `AndroidManifest.xml` entry) scanned
   via `ojo fs --scanners misconfig`, confirming all four rule IDs surface
