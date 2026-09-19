@@ -105,6 +105,7 @@ func scanAndroidManifest(path string) ([]model.Issue, error) {
 	issues = append(issues, checkAndroidDebuggable(m, path)...)
 	issues = append(issues, checkAndroidCleartextTraffic(m, path)...)
 	issues = append(issues, checkAndroidExportedComponents(m, path)...)
+	issues = append(issues, checkAndroidBroadPermissions(m, path)...)
 	return issues, nil
 }
 
@@ -152,6 +153,32 @@ func checkAndroidExportedComponents(m androidManifest, path string) []model.Issu
 			issues = append(issues, newIssue("android-exported-component-no-permission", "HIGH", path, 1,
 				"Exported component has no permission guard",
 				fmt.Sprintf("%s %s is exported with no android:permission at the component or application level", k.kind, c.Name)))
+		}
+	}
+	return issues
+}
+
+// androidBroadPermissions is a curated, deliberately non-exhaustive list of
+// high-risk permissions -- same curated-list precedent as this package's
+// mcp-cross-origin-credential vendor table.
+var androidBroadPermissions = map[string]bool{
+	"android.permission.QUERY_ALL_PACKAGES":         true,
+	"android.permission.SYSTEM_ALERT_WINDOW":        true,
+	"android.permission.REQUEST_INSTALL_PACKAGES":   true,
+	"android.permission.READ_SMS":                   true,
+	"android.permission.RECEIVE_SMS":                true,
+	"android.permission.BIND_ACCESSIBILITY_SERVICE": true,
+	"android.permission.WRITE_SECURE_SETTINGS":      true,
+	"android.permission.MANAGE_EXTERNAL_STORAGE":    true,
+}
+
+func checkAndroidBroadPermissions(m androidManifest, path string) []model.Issue {
+	var issues []model.Issue
+	for _, p := range m.UsesPermissions {
+		if androidBroadPermissions[p.Name] {
+			issues = append(issues, newIssue("android-broad-permission", "MEDIUM", path, 1,
+				"Requests a high-risk permission",
+				"uses-permission "+p.Name))
 		}
 	}
 	return issues
