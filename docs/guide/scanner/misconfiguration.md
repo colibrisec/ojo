@@ -14,10 +14,11 @@ Off by default — enable with `--scanners misconfig` (or combine: `--scanners v
 | CloudFormation | `*.yaml`/`*.yml`/`*.json`/`*.template` containing a `Resources` map with an `AWS::`/`Alexa::`/`Custom::` resource `Type` | `gopkg.in/yaml.v3` (YAML) or `encoding/json` (JSON), both stdlib-adjacent — no new dependency for either |
 | MCP server config | `*.json` containing a top-level `mcpServers` object, or a `servers` object whose own filename also contains "mcp" | `encoding/json` |
 | Skill definition | filename `SKILL.md` (case-insensitive) | Line-based regex, same idiom as the Dockerfile parser |
+| Android manifest | `*.apk` containing an `AndroidManifest.xml` entry | [`shogo82148/androidbinary`](https://github.com/shogo82148/androidbinary) decodes the binary XML (AXML) format to plain XML text, then `encoding/xml` |
 
 Every `*.yaml`/`*.yml` file is tried as both a Kubernetes manifest and a CloudFormation template; each is a no-op on a file that doesn't look like its format (missing `apiVersion`+`kind`, or no CloudFormation-shaped `Resources`), so there's no real ambiguity cost to trying both. Every `*.json` file is similarly tried as both a CloudFormation template and an MCP config.
 
-## Built-in checks (131)
+## Built-in checks (135)
 
 **Dockerfile**
 
@@ -117,6 +118,13 @@ Secrets hardcoded in a server's `env` block aren't a separate check here — the
 
 Hardcoded secrets in `SKILL.md` also aren't a separate check — `.md` is already in the secret scanner's file list.
 
+**Android manifest (4 checks)**
+
+- `android-debuggable` (HIGH) — `<application android:debuggable="true">` ships in the built APK.
+- `android-cleartext-traffic` (MEDIUM) — `<application android:usesCleartextTraffic="true">` explicitly. The platform default has been `false` since API 28, so the attribute's absence isn't flagged — only an explicit `true` is a real signal.
+- `android-exported-component-no-permission` (HIGH) — an `activity`/`service`/`receiver`/`provider` that's exported — either `android:exported="true"` explicitly, or implicitly (the attribute is absent *and* the component has an `<intent-filter>`, real pre-API-31 platform default behavior) — with no `android:permission` at either the component or the `<application>` fallback level.
+- `android-broad-permission` (MEDIUM) — a `<uses-permission>` naming a curated, non-exhaustive list of high-risk permissions (`QUERY_ALL_PACKAGES`, `SYSTEM_ALERT_WINDOW`, `REQUEST_INSTALL_PACKAGES`, `READ_SMS`, `RECEIVE_SMS`, `BIND_ACCESSIBILITY_SERVICE`, `WRITE_SECURE_SETTINGS`, `MANAGE_EXTERNAL_STORAGE`).
+
 ## Limitations
 
 !!! note "Terraform variable/local resolution is best-effort, single-directory"
@@ -148,3 +156,6 @@ Hardcoded secrets in `SKILL.md` also aren't a separate check — `.md` is alread
 
 !!! note "Skill permission checks assume `allowed-tools` frontmatter; no schema validation beyond that"
     `skill-broad-tool-permissions` reads a frontmatter key named `allowed-tools` specifically — if a client uses a different field name for the same concept, this check silently sees nothing to flag rather than erroring, the same "no schema to validate against" gap as the rest of this section.
+
+!!! note "Android manifest checks don't resolve resource references, and don't merge split APKs"
+    An attribute expressed as a resource reference (e.g. `android:debuggable="@bool/is_debug"`) rather than a literal isn't resolved, so it won't fire any check — the same "flag the candidate, don't resolve everything" trade-off several SAST rules already make. Android App Bundle's per-ABI/density split `.apk` files aren't merged with the base APK's manifest; each `.apk` found is checked independently using whatever manifest it contains. Native `.so` library fingerprinting, DEX bytecode analysis, and iOS/IPA are separate, not-yet-started items (see `TODO.md`).

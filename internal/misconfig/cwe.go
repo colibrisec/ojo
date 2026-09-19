@@ -151,4 +151,9 @@ var ruleCWEs = map[string][]string{
 	"mcp-shell-wrapper":                {"CWE-78"},
 	"skill-credential-exfil-reference": {"CWE-522"},
 	"tf-alb-invalid-headers-allowed":   {"CWE-444"},
+
+	"android-debuggable":                       {"CWE-489"},
+	"android-cleartext-traffic":                {"CWE-319"},
+	"android-exported-component-no-permission": {"CWE-926"},
+	"android-broad-permission":                 {"CWE-250"},
 }
