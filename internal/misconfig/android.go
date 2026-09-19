@@ -94,5 +94,23 @@ func decodeAndroidManifest(path string) (androidManifest, error) {
 	return m, nil
 }
 
-// silence unused-import concerns until Task 3 adds the first caller of model.Issue in this file
-var _ = model.Issue{}
+// scanAndroidManifest decodes path's AndroidManifest.xml and runs every
+// android-* misconfig check against it.
+func scanAndroidManifest(path string) ([]model.Issue, error) {
+	m, err := decodeAndroidManifest(path)
+	if err != nil {
+		return nil, err
+	}
+	var issues []model.Issue
+	issues = append(issues, checkAndroidDebuggable(m, path)...)
+	return issues, nil
+}
+
+func checkAndroidDebuggable(m androidManifest, path string) []model.Issue {
+	if m.Application.Debuggable == "true" {
+		return []model.Issue{newIssue("android-debuggable", "HIGH", path, 1,
+			"Application is debuggable",
+			`<application android:debuggable="true"> ships in the built APK`)}
+	}
+	return nil
+}

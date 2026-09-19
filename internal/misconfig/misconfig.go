@@ -45,6 +45,12 @@ func Scan(root string) ([]model.Issue, error) {
 				return nil
 			}
 			issues = append(issues, found...)
+		case isAPKFile(name):
+			found, err := scanAndroidManifest(path)
+			if err != nil {
+				return nil // skip unparsable/non-APK-shaped .apk file, don't fail the whole scan
+			}
+			issues = append(issues, found...)
 		case strings.HasSuffix(name, ".yaml") || strings.HasSuffix(name, ".yml"):
 			// A YAML file is tried as both a Kubernetes manifest and a
 			// CloudFormation template -- each is a no-op on a file that
