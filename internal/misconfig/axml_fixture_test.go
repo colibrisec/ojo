@@ -317,3 +317,50 @@ func TestAXMLFixtureBuilderRoundTrips(t *testing.T) {
 		t.Errorf("Activities[0].Exported = %q, want true", m.Application.Activities[0].Exported)
 	}
 }
+
+// maliciousHugeStringCountAXML returns 36 bytes shaped like a minimal valid
+// AXML file's outer chunk header + string pool header, except StringCount
+// declares an impossible value for a 36-byte file -- the exact shape that
+// crashes androidbinary.NewXMLFile with an unrecoverable OOM if handed to it
+// directly. Used to prove sanityCheckAXML rejects it before that call.
+func maliciousHugeStringCountAXML() []byte {
+	buf := make([]byte, 36)
+	binary.LittleEndian.PutUint16(buf[0:2], resXMLChunkType)          // outer chunk Type
+	binary.LittleEndian.PutUint16(buf[2:4], 8)                        // outer HeaderSize
+	binary.LittleEndian.PutUint32(buf[4:8], 36)                       // outer Size
+	binary.LittleEndian.PutUint16(buf[8:10], resStringPoolChunkType)  // string pool Type
+	binary.LittleEndian.PutUint16(buf[10:12], 28)                     // string pool HeaderSize
+	binary.LittleEndian.PutUint32(buf[12:16], 28)                     // string pool Size
+	binary.LittleEndian.PutUint32(buf[16:20], 0xF0000000)             // StringCount: impossible
+	binary.LittleEndian.PutUint32(buf[20:24], 0)                      // StyleCount
+	binary.LittleEndian.PutUint32(buf[24:28], utf8Flag)               // Flags
+	binary.LittleEndian.PutUint32(buf[28:32], 28)                     // StringStart
+	binary.LittleEndian.PutUint32(buf[32:36], 0)                      // StylesStart
+	return buf
+}
+
+// writeRawTestAPK packs raw bytes directly as a zip entry named
+// AndroidManifest.xml, bypassing the axmlBuilder entirely -- for fixtures
+// that are deliberately not well-formed AXML.
+func writeRawTestAPK(t *testing.T, dir string, raw []byte) string {
+	t.Helper()
+	path := filepath.Join(dir, "app.apk")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	zw := zip.NewWriter(f)
+	w, err := zw.Create("AndroidManifest.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write(raw); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}

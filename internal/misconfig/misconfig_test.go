@@ -1135,6 +1135,40 @@ func TestAndroidExportedComponentNoPermission(t *testing.T) {
 			appAttrs:  []attr{strAttr("permission", "com.example.APP_PERM")},
 			wantIssue: false,
 		},
+		{
+			name: "exported via non-launcher intent-filter, no permission, still fires",
+			activity: elem{
+				Name:  "activity",
+				Attrs: []attr{strAttr("name", ".DeepLink")},
+				Children: []elem{
+					{
+						Name: "intent-filter",
+						Children: []elem{
+							{Name: "action", Attrs: []attr{{NS: androidNS, Name: "name", StrValue: "android.intent.action.VIEW"}}},
+							{Name: "category", Attrs: []attr{{NS: androidNS, Name: "name", StrValue: "android.intent.category.DEFAULT"}}},
+						},
+					},
+				},
+			},
+			wantIssue: true,
+		},
+		{
+			name: "MAIN/LAUNCHER intent-filter is exempt even though unguarded",
+			activity: elem{
+				Name:  "activity",
+				Attrs: []attr{strAttr("name", ".Main")},
+				Children: []elem{
+					{
+						Name: "intent-filter",
+						Children: []elem{
+							{Name: "action", Attrs: []attr{{NS: androidNS, Name: "name", StrValue: "android.intent.action.MAIN"}}},
+							{Name: "category", Attrs: []attr{{NS: androidNS, Name: "name", StrValue: "android.intent.category.LAUNCHER"}}},
+						},
+					},
+				},
+			},
+			wantIssue: false,
+		},
 	}
 
 	for _, c := range cases {
@@ -1204,12 +1238,15 @@ func TestAndroidNarrowPermissionDoesNotFire(t *testing.T) {
 // TestAndroidRealFixture decodes a real compiled AndroidManifest.xml (not a
 // hand-built one) end to end. Source: github.com/shogo82148/androidbinary's
 // MIT-licensed apk/testdata/helloworld.apk test fixture, package
-// com.example.helloworld. It genuinely has android:debuggable="true" and one
-// unguarded, implicitly-exported activity (an intent-filter with no explicit
-// exported/permission attribute) -- verified by decoding it during planning,
-// not assumed -- so both of those rules should fire; it has no
-// usesCleartextTraffic attribute and no uses-permission elements at all, so
-// the other two rules should not.
+// com.example.helloworld. It genuinely has android:debuggable="true", so
+// that rule should fire. Its one activity has a MAIN/LAUNCHER intent-filter
+// and no explicit exported/permission attribute -- implicitly exported, but
+// correctly exempted by the launcher-activity check in
+// checkAndroidExportedComponents (a launcher activity is expected to be
+// exported with no permission guard; that's normal, not a misconfiguration),
+// so android-exported-component-no-permission should NOT fire here. It has
+// no usesCleartextTraffic attribute and no uses-permission elements at all,
+// so the other two rules should not fire either.
 func TestAndroidRealFixture(t *testing.T) {
 	src, err := os.ReadFile(filepath.Join("testdata", "android", "helloworld_AndroidManifest.xml"))
 	if err != nil {
@@ -1243,14 +1280,63 @@ func TestAndroidRealFixture(t *testing.T) {
 	for _, i := range issues {
 		got[i.RuleID] = true
 	}
-	for _, want := range []string{"android-debuggable", "android-exported-component-no-permission"} {
+	for _, want := range []string{"android-debuggable"} {
 		if !got[want] {
 			t.Errorf("expected %s to fire on the real fixture, got %+v", want, issues)
 		}
 	}
-	for _, notWant := range []string{"android-cleartext-traffic", "android-broad-permission"} {
+	for _, notWant := range []string{"android-cleartext-traffic", "android-broad-permission", "android-exported-component-no-permission"} {
 		if got[notWant] {
 			t.Errorf("did not expect %s to fire on the real fixture, got %+v", notWant, issues)
+		}
+	}
+}
+
+func TestAndroidMaliciousStringCountDoesNotCrash(t *testing.T) {
+	dir := t.TempDir()
+	writeRawTestAPK(t, dir, maliciousHugeStringCountAXML())
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatalf("Scan should skip the malformed .apk, not error: %v", err)
+	}
+	for _, i := range issues {
+		if strings.HasPrefix(i.RuleID, "android-") {
+			t.Errorf("malformed .apk should produce no android-* issues, got %+v", i)
+		}
+	}
+}
+
+func TestAndroidOversizedManifestEntryIsCapped(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "app.apk")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	w, err := zw.Create("AndroidManifest.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// All-zero payload compresses to almost nothing on disk but declares
+	// (and, written here, actually contains) more than the cap.
+	oversized := make([]byte, 10*1024*1024+1024)
+	if _, err := w.Write(oversized); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatalf("Scan should skip the oversized .apk entry, not error: %v", err)
+	}
+	for _, i := range issues {
+		if strings.HasPrefix(i.RuleID, "android-") {
+			t.Errorf("oversized .apk entry should produce no android-* issues, got %+v", i)
 		}
 	}
 }
