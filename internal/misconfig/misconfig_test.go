@@ -1158,6 +1158,48 @@ func TestAndroidExportedComponentNoPermission(t *testing.T) {
 	}
 }
 
+func TestAndroidBroadPermission(t *testing.T) {
+	dir := t.TempDir()
+	writeTestAPK(t, dir, baseManifest(
+		elem{Name: "uses-permission", Attrs: []attr{strAttr("name", "android.permission.QUERY_ALL_PACKAGES")}},
+		appElem(nil),
+	))
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	has := func(ruleID string) bool {
+		for _, i := range issues {
+			if i.RuleID == ruleID {
+				return true
+			}
+		}
+		return false
+	}
+	if !has("android-broad-permission") {
+		t.Errorf("expected android-broad-permission, got %+v", issues)
+	}
+}
+
+func TestAndroidNarrowPermissionDoesNotFire(t *testing.T) {
+	dir := t.TempDir()
+	writeTestAPK(t, dir, baseManifest(
+		elem{Name: "uses-permission", Attrs: []attr{strAttr("name", "android.permission.INTERNET")}},
+		appElem(nil),
+	))
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, i := range issues {
+		if i.RuleID == "android-broad-permission" {
+			t.Errorf("INTERNET should not be flagged as broad, got %+v", issues)
+		}
+	}
+}
+
 func write(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {

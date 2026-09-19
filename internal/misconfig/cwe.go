@@ -155,4 +155,5 @@ var ruleCWEs = map[string][]string{
 	"android-debuggable":                       {"CWE-489"},
 	"android-cleartext-traffic":                {"CWE-319"},
 	"android-exported-component-no-permission": {"CWE-926"},
+	"android-broad-permission":                 {"CWE-250"},
 }
