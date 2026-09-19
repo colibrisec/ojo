@@ -103,6 +103,7 @@ func scanAndroidManifest(path string) ([]model.Issue, error) {
 	}
 	var issues []model.Issue
 	issues = append(issues, checkAndroidDebuggable(m, path)...)
+	issues = append(issues, checkAndroidCleartextTraffic(m, path)...)
 	return issues, nil
 }
 
@@ -111,6 +112,15 @@ func checkAndroidDebuggable(m androidManifest, path string) []model.Issue {
 		return []model.Issue{newIssue("android-debuggable", "HIGH", path, 1,
 			"Application is debuggable",
 			`<application android:debuggable="true"> ships in the built APK`)}
+	}
+	return nil
+}
+
+func checkAndroidCleartextTraffic(m androidManifest, path string) []model.Issue {
+	if m.Application.UsesCleartextTraffic == "true" {
+		return []model.Issue{newIssue("android-cleartext-traffic", "MEDIUM", path, 1,
+			"Application explicitly allows cleartext network traffic",
+			`<application android:usesCleartextTraffic="true">`)}
 	}
 	return nil
 }

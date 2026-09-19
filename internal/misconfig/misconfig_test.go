@@ -1050,6 +1050,42 @@ func TestAndroidNotDebuggable(t *testing.T) {
 	}
 }
 
+func TestAndroidCleartextTraffic(t *testing.T) {
+	dir := t.TempDir()
+	writeTestAPK(t, dir, baseManifest(appElem([]attr{boolAttr("usesCleartextTraffic", true)})))
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	has := func(ruleID string) bool {
+		for _, i := range issues {
+			if i.RuleID == ruleID {
+				return true
+			}
+		}
+		return false
+	}
+	if !has("android-cleartext-traffic") {
+		t.Errorf("expected android-cleartext-traffic, got %+v", issues)
+	}
+}
+
+func TestAndroidCleartextTrafficAbsentDoesNotFire(t *testing.T) {
+	dir := t.TempDir()
+	writeTestAPK(t, dir, baseManifest(appElem(nil)))
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, i := range issues {
+		if i.RuleID == "android-cleartext-traffic" {
+			t.Errorf("absent usesCleartextTraffic should not fire, got %+v", issues)
+		}
+	}
+}
+
 func write(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
