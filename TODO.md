@@ -216,7 +216,7 @@ Currently every scan is a live query to OSV.dev (`internal/osv/client.go`) — n
 - `internal/osv/client.go`'s `Scan()` needs a second code path that queries the local DB instead of `POST /v1/querybatch` + `GET /v1/vulns/{id}` — same output shape (`[]model.Finding`), different data source, selected via a new `--offline` flag.
 - This is real infrastructure (sync, versioning, storage growth over time, corruption/partial-update handling) — size it accordingly before committing to a timeline. Only worth building if air-gapped scanning is an actual requirement, not a nice-to-have.
 
-### Mobile app binary scanning (APK / IPA)
+### Mobile app binary scanning (APK / IPA) — Android manifest/permission analysis ✅ shipped, rest not started
 
 **This is not an ecosystem parser — it's a new target type**, comparable in size to building the container image scanner from scratch (`internal/image/`), not an incremental add. An APK/IPA is a compiled, zipped app bundle, not a dependency manifest with a package-manager database to read the way Debian/Alpine images have `dpkg`/`apk`.
 
@@ -235,6 +235,8 @@ Note what this *isn't*: an Android app's third-party library dependencies are al
 - `Info.plist`/entitlements analysis (ATS settings, exported capabilities) is the iOS analogue of `AndroidManifest.xml` misconfig checks and is realistic without touching the encrypted binary — likely the only iOS-side win worth pursuing without the encryption problem.
 
 **Recommendation:** if this gets prioritized, start with Android manifest/permission analysis only (item 1 above) — it's a real, scoped, misconfig-scanner-shaped addition. Native library fingerprinting and anything iOS-binary-related are substantially bigger and should be separate decisions, not bundled into "add mobile support."
+
+**Update:** Android manifest/permission analysis (recommendation item 1 above) shipped as four checks folded into the existing `misconfig` scanner (`internal/misconfig/android.go`) — `android-debuggable`, `android-cleartext-traffic`, `android-exported-component-no-permission`, `android-broad-permission`. Decodes `AndroidManifest.xml` from a `.apk`'s binary XML (AXML) format via `github.com/shogo82148/androidbinary` (its root decoder only, not its higher-level `apk` subpackage — that one's missing `exported`/`service`/`receiver`/`provider` fields this feature needs, and pulls in `resources.arsc`/icon-image parsing it doesn't). No resource-reference resolution, no split-APK merging. Design: `docs/superpowers/specs/2026-09-18-android-manifest-misconfig-design.md`. Native library fingerprinting, DEX bytecode analysis, and iOS/IPA remain not started, as originally scoped.
 
 ### AI agent / skill / MCP config scanning — ✅ shipped, 13 checks across three rounds
 
