@@ -1013,6 +1013,43 @@ It also documents that you can run "npm install" locally -- no piped remote exec
 	}
 }
 
+func TestAndroidDebuggable(t *testing.T) {
+	dir := t.TempDir()
+	activity := elem{Name: "activity", Attrs: []attr{strAttr("name", ".Main")}}
+	writeTestAPK(t, dir, baseManifest(appElem([]attr{boolAttr("debuggable", true)}, activity)))
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	has := func(ruleID string) bool {
+		for _, i := range issues {
+			if i.RuleID == ruleID {
+				return true
+			}
+		}
+		return false
+	}
+	if !has("android-debuggable") {
+		t.Errorf("expected android-debuggable, got %+v", issues)
+	}
+}
+
+func TestAndroidNotDebuggable(t *testing.T) {
+	dir := t.TempDir()
+	writeTestAPK(t, dir, baseManifest(appElem([]attr{boolAttr("debuggable", false)})))
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, i := range issues {
+		if i.RuleID == "android-debuggable" {
+			t.Errorf("did not expect android-debuggable, got %+v", issues)
+		}
+	}
+}
+
 func write(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
