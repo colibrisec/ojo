@@ -100,6 +100,23 @@ func TestImageCmd_NoFindingsExitsClean(t *testing.T) {
 	}
 }
 
+func TestImageCmd_PrintsScanProgress(t *testing.T) {
+	stubImageScan(t, []model.Package{{Name: "x", Version: "1"}}, "debian 12", nil)
+	stubOSVScan(t, nil, nil)
+	out, err := runImage(t, "alpine:latest")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	for _, want := range []string{
+		"Pulling and scanning image layers...",
+		"Querying OSV for known vulnerabilities...",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected output to contain %q, got %q", want, out)
+		}
+	}
+}
+
 func TestImageCmd_FindingsReturnErrFindingsFound(t *testing.T) {
 	stubImageScan(t, []model.Package{{Name: "x", Version: "1"}}, "debian 12", nil)
 	stubOSVScan(t, []model.Finding{{

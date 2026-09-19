@@ -118,6 +118,27 @@ func TestFsCmd_VulnScannerStub(t *testing.T) {
 	}
 }
 
+func TestFsCmd_PrintsScanProgress(t *testing.T) {
+	dir := t.TempDir()
+	stubOSVScan(t, nil, nil)
+
+	out, err := run(t, dir, "--scanners", "vuln,secret,misconfig,sast,quality")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	for _, want := range []string{
+		"Running vuln scan...",
+		"Running secret scan...",
+		"Running misconfig scan...",
+		"Running sast scan...",
+		"Running quality scan...",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected output to contain %q, got %q", want, out)
+		}
+	}
+}
+
 func TestFsCmd_VulnScannerOSVErrorPropagates(t *testing.T) {
 	dir := t.TempDir()
 	stubOSVScan(t, nil, errors.New("osv down"))
