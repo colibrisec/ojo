@@ -3,6 +3,7 @@ package misconfig
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/binary"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -12,6 +13,13 @@ import (
 
 	"github.com/colibrisec/ojo/internal/model"
 )
+
+// maxManifestSize caps how many bytes decodeAndroidManifest will read from
+// a .apk's AndroidManifest.xml zip entry. A real AndroidManifest.xml is
+// single-digit KB; this is deliberately generous while still defending
+// against a decompression bomb (a few KB of zip data that inflates to many
+// GB) in a fully attacker-controlled binary.
+const maxManifestSize = 10 * 1024 * 1024 // 10 MiB
 
 func isAPKFile(name string) bool {
 	return strings.HasSuffix(strings.ToLower(name), ".apk")
@@ -25,10 +33,57 @@ type androidPermission struct {
 // manifest element types that share the same exported/permission/
 // intent-filter shape.
 type androidComponent struct {
-	Name          string     `xml:"http://schemas.android.com/apk/res/android name,attr"`
-	Exported      string     `xml:"http://schemas.android.com/apk/res/android exported,attr"`
-	Permission    string     `xml:"http://schemas.android.com/apk/res/android permission,attr"`
-	IntentFilters []struct{} `xml:"intent-filter"`
+	Name          string                `xml:"http://schemas.android.com/apk/res/android name,attr"`
+	Exported      string                `xml:"http://schemas.android.com/apk/res/android exported,attr"`
+	Permission    string                `xml:"http://schemas.android.com/apk/res/android permission,attr"`
+	IntentFilters []androidIntentFilter `xml:"intent-filter"`
+}
+
+// androidIntentFilter models only what's needed to detect the standard
+// MAIN+LAUNCHER combination -- the one intent-filter shape that's expected,
+// required, and present on virtually every app's entry activity, so an
+// exported-with-no-permission finding on it is a false positive rather than
+// a real misconfiguration signal.
+type androidIntentFilter struct {
+	Actions    []androidIntentFilterName `xml:"action"`
+	Categories []androidIntentFilterName `xml:"category"`
+}
+
+type androidIntentFilterName struct {
+	Name string `xml:"http://schemas.android.com/apk/res/android name,attr"`
+}
+
+// isLauncherIntentFilter reports whether f is the standard "this is the
+// app's main entry point" intent-filter: android.intent.action.MAIN paired
+// with android.intent.category.LAUNCHER in the same filter.
+func isLauncherIntentFilter(f androidIntentFilter) bool {
+	hasMain := false
+	for _, a := range f.Actions {
+		if a.Name == "android.intent.action.MAIN" {
+			hasMain = true
+			break
+		}
+	}
+	if !hasMain {
+		return false
+	}
+	for _, c := range f.Categories {
+		if c.Name == "android.intent.category.LAUNCHER" {
+			return true
+		}
+	}
+	return false
+}
+
+// componentHasLauncherIntent reports whether any of c's intent-filters is
+// the standard MAIN+LAUNCHER launcher-activity filter.
+func componentHasLauncherIntent(c androidComponent) bool {
+	for _, f := range c.IntentFilters {
+		if isLauncherIntentFilter(f) {
+			return true
+		}
+	}
+	return false
 }
 
 type androidApplication struct {
@@ -48,6 +103,35 @@ type androidManifest struct {
 	Application     androidApplication  `xml:"application"`
 }
 
+// sanityCheckAXML performs a minimal size-vs-declared-count pre-flight over
+// raw AXML bytes before handing them to androidbinary.NewXMLFile. AXML's
+// string pool chunk declares its StringCount/StyleCount near the front of
+// the file (byte offsets 16 and 20 -- 8 bytes for the outer chunk's own
+// ResChunkHeader, then 8 more for the string pool chunk's own ResChunkHeader,
+// then the two uint32 counts), and androidbinary trusts those values to
+// allocate a same-sized slice with no bounds check -- a crafted file
+// declaring an enormous count triggers an unrecoverable
+// "fatal error: out of memory" (recover() cannot catch a Go runtime fatal
+// error) before any real parsing happens. A pool can't legitimately declare
+// more strings/styles than there's room for 4-byte offset entries in the
+// file, so this catches the attack class cheaply and deterministically.
+func sanityCheckAXML(raw []byte) error {
+	const stringCountOffset = 16
+	const minLen = stringCountOffset + 8 // + StringCount(4) + StyleCount(4)
+	if len(raw) < minLen {
+		return fmt.Errorf("AXML data too short (%d bytes) to contain a string pool header", len(raw))
+	}
+	stringCount := binary.LittleEndian.Uint32(raw[stringCountOffset : stringCountOffset+4])
+	styleCount := binary.LittleEndian.Uint32(raw[stringCountOffset+4 : stringCountOffset+8])
+	if uint64(stringCount)*4 > uint64(len(raw)) {
+		return fmt.Errorf("AXML string pool declares %d strings, impossible for a %d-byte file", stringCount, len(raw))
+	}
+	if uint64(styleCount)*4 > uint64(len(raw)) {
+		return fmt.Errorf("AXML string pool declares %d styles, impossible for a %d-byte file", styleCount, len(raw))
+	}
+	return nil
+}
+
 // decodeAndroidManifest opens path as a zip archive, decodes its
 // AndroidManifest.xml entry from Android's compiled binary XML format
 // (AXML) via androidbinary, and unmarshals the resulting plain XML into an
@@ -62,20 +146,29 @@ func decodeAndroidManifest(path string) (androidManifest, error) {
 	var raw []byte
 	for _, f := range r.File {
 		if f.Name == "AndroidManifest.xml" {
+			if f.UncompressedSize64 > maxManifestSize {
+				return androidManifest{}, fmt.Errorf("%s: AndroidManifest.xml entry too large (%d bytes, cap %d)", path, f.UncompressedSize64, uint64(maxManifestSize))
+			}
 			rc, err := f.Open()
 			if err != nil {
 				return androidManifest{}, err
 			}
-			raw, err = io.ReadAll(rc)
+			raw, err = io.ReadAll(io.LimitReader(rc, maxManifestSize+1))
 			rc.Close()
 			if err != nil {
 				return androidManifest{}, err
+			}
+			if len(raw) > maxManifestSize {
+				return androidManifest{}, fmt.Errorf("%s: AndroidManifest.xml entry exceeds %d-byte cap", path, maxManifestSize)
 			}
 			break
 		}
 	}
 	if raw == nil {
 		return androidManifest{}, fmt.Errorf("%s: no AndroidManifest.xml entry", path)
+	}
+	if err := sanityCheckAXML(raw); err != nil {
+		return androidManifest{}, fmt.Errorf("%s: %w", path, err)
 	}
 
 	xf, err := androidbinary.NewXMLFile(bytes.NewReader(raw))
@@ -148,6 +241,9 @@ func checkAndroidExportedComponents(m androidManifest, path string) []model.Issu
 				continue
 			}
 			if c.Permission != "" || m.Application.Permission != "" {
+				continue
+			}
+			if componentHasLauncherIntent(c) {
 				continue
 			}
 			issues = append(issues, newIssue("android-exported-component-no-permission", "HIGH", path, 1,
