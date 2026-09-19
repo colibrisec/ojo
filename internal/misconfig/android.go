@@ -104,6 +104,7 @@ func scanAndroidManifest(path string) ([]model.Issue, error) {
 	var issues []model.Issue
 	issues = append(issues, checkAndroidDebuggable(m, path)...)
 	issues = append(issues, checkAndroidCleartextTraffic(m, path)...)
+	issues = append(issues, checkAndroidExportedComponents(m, path)...)
 	return issues, nil
 }
 
@@ -123,4 +124,35 @@ func checkAndroidCleartextTraffic(m androidManifest, path string) []model.Issue 
 			`<application android:usesCleartextTraffic="true">`)}
 	}
 	return nil
+}
+
+func checkAndroidExportedComponents(m androidManifest, path string) []model.Issue {
+	var issues []model.Issue
+	kinds := []struct {
+		kind string
+		list []androidComponent
+	}{
+		{"activity", m.Application.Activities},
+		{"service", m.Application.Services},
+		{"receiver", m.Application.Receivers},
+		{"provider", m.Application.Providers},
+	}
+	for _, k := range kinds {
+		for _, c := range k.list {
+			// A component with no explicit android:exported is exported by
+			// default when it has an intent-filter -- real pre-API-31
+			// platform behavior, not a guess.
+			exported := c.Exported == "true" || (c.Exported == "" && len(c.IntentFilters) > 0)
+			if !exported {
+				continue
+			}
+			if c.Permission != "" || m.Application.Permission != "" {
+				continue
+			}
+			issues = append(issues, newIssue("android-exported-component-no-permission", "HIGH", path, 1,
+				"Exported component has no permission guard",
+				fmt.Sprintf("%s %s is exported with no android:permission at the component or application level", k.kind, c.Name)))
+		}
+	}
+	return issues
 }

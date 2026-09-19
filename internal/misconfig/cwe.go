@@ -152,6 +152,7 @@ var ruleCWEs = map[string][]string{
 	"skill-credential-exfil-reference": {"CWE-522"},
 	"tf-alb-invalid-headers-allowed":   {"CWE-444"},
 
-	"android-debuggable":           {"CWE-489"},
-	"android-cleartext-traffic":    {"CWE-319"},
+	"android-debuggable":                       {"CWE-489"},
+	"android-cleartext-traffic":                {"CWE-319"},
+	"android-exported-component-no-permission": {"CWE-926"},
 }
