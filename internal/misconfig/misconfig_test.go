@@ -1086,6 +1086,78 @@ func TestAndroidCleartextTrafficAbsentDoesNotFire(t *testing.T) {
 	}
 }
 
+func TestAndroidExportedComponentNoPermission(t *testing.T) {
+	cases := []struct {
+		name      string
+		activity  elem
+		appAttrs  []attr
+		wantIssue bool
+	}{
+		{
+			name:      "explicit exported, no permission",
+			activity:  elem{Name: "activity", Attrs: []attr{strAttr("name", ".A"), boolAttr("exported", true)}},
+			wantIssue: true,
+		},
+		{
+			name: "explicit exported, with component permission",
+			activity: elem{Name: "activity", Attrs: []attr{
+				strAttr("name", ".A"), boolAttr("exported", true), strAttr("permission", "com.example.PERM"),
+			}},
+			wantIssue: false,
+		},
+		{
+			name: "implicit export via intent-filter, no permission",
+			activity: elem{
+				Name:     "activity",
+				Attrs:    []attr{strAttr("name", ".A")},
+				Children: []elem{{Name: "intent-filter"}},
+			},
+			wantIssue: true,
+		},
+		{
+			name: "exported=false with intent-filter does not fire",
+			activity: elem{
+				Name:     "activity",
+				Attrs:    []attr{strAttr("name", ".A"), boolAttr("exported", false)},
+				Children: []elem{{Name: "intent-filter"}},
+			},
+			wantIssue: false,
+		},
+		{
+			name:      "not exported, no intent-filter",
+			activity:  elem{Name: "activity", Attrs: []attr{strAttr("name", ".A")}},
+			wantIssue: false,
+		},
+		{
+			name:      "exported, guarded by application-level permission",
+			activity:  elem{Name: "activity", Attrs: []attr{strAttr("name", ".A"), boolAttr("exported", true)}},
+			appAttrs:  []attr{strAttr("permission", "com.example.APP_PERM")},
+			wantIssue: false,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeTestAPK(t, dir, baseManifest(appElem(c.appAttrs, c.activity)))
+
+			issues, err := Scan(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := false
+			for _, i := range issues {
+				if i.RuleID == "android-exported-component-no-permission" {
+					got = true
+				}
+			}
+			if got != c.wantIssue {
+				t.Errorf("%s: got issue=%v want %v (issues: %+v)", c.name, got, c.wantIssue, issues)
+			}
+		})
+	}
+}
+
 func write(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
