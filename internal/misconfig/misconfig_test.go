@@ -1,6 +1,7 @@
 package misconfig
 
 import (
+	"archive/zip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1196,6 +1197,60 @@ func TestAndroidNarrowPermissionDoesNotFire(t *testing.T) {
 	for _, i := range issues {
 		if i.RuleID == "android-broad-permission" {
 			t.Errorf("INTERNET should not be flagged as broad, got %+v", issues)
+		}
+	}
+}
+
+// TestAndroidRealFixture decodes a real compiled AndroidManifest.xml (not a
+// hand-built one) end to end. Source: github.com/shogo82148/androidbinary's
+// MIT-licensed apk/testdata/helloworld.apk test fixture, package
+// com.example.helloworld. It genuinely has android:debuggable="true" and one
+// unguarded, implicitly-exported activity (an intent-filter with no explicit
+// exported/permission attribute) -- verified by decoding it during planning,
+// not assumed -- so both of those rules should fire; it has no
+// usesCleartextTraffic attribute and no uses-permission elements at all, so
+// the other two rules should not.
+func TestAndroidRealFixture(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("testdata", "android", "helloworld_AndroidManifest.xml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	apkPath := filepath.Join(dir, "helloworld.apk")
+	f, err := os.Create(apkPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	w, err := zw.Create("AndroidManifest.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write(src); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+
+	issues, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, i := range issues {
+		got[i.RuleID] = true
+	}
+	for _, want := range []string{"android-debuggable", "android-exported-component-no-permission"} {
+		if !got[want] {
+			t.Errorf("expected %s to fire on the real fixture, got %+v", want, issues)
+		}
+	}
+	for _, notWant := range []string{"android-cleartext-traffic", "android-broad-permission"} {
+		if got[notWant] {
+			t.Errorf("did not expect %s to fire on the real fixture, got %+v", notWant, issues)
 		}
 	}
 }
