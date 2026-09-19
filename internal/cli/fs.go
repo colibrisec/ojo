@@ -101,6 +101,7 @@ func fsCmd() *cobra.Command {
 			for _, s := range strings.Split(scanners, ",") {
 				switch strings.TrimSpace(s) {
 				case "vuln":
+					fmt.Fprintln(cmd.ErrOrStderr(), "Running vuln scan...")
 					pkgs, err := manifest.Discover(root)
 					if err != nil {
 						return fmt.Errorf("discovering manifests: %w", err)
@@ -116,6 +117,7 @@ func fsCmd() *cobra.Command {
 					}
 					rep.Findings = findings
 				case "secret":
+					fmt.Fprintln(cmd.ErrOrStderr(), "Running secret scan...")
 					issues, err := secret.Scan(root, extraSecretRules)
 					if err != nil {
 						return fmt.Errorf("scanning secrets: %w", err)
@@ -129,12 +131,14 @@ func fsCmd() *cobra.Command {
 						rep.Issues = append(rep.Issues, histIssues...)
 					}
 				case "misconfig":
+					fmt.Fprintln(cmd.ErrOrStderr(), "Running misconfig scan...")
 					issues, err := misconfig.Scan(root)
 					if err != nil {
 						return fmt.Errorf("scanning misconfig: %w", err)
 					}
 					rep.Issues = append(rep.Issues, issues...)
 				case "sast":
+					fmt.Fprintln(cmd.ErrOrStderr(), "Running sast scan...")
 					issues, err := sast.Scan(root)
 					if err != nil {
 						return fmt.Errorf("running sast: %w", err)
@@ -146,6 +150,7 @@ func fsCmd() *cobra.Command {
 					}
 					rep.Issues = append(rep.Issues, customIssues...)
 				case "quality":
+					fmt.Fprintln(cmd.ErrOrStderr(), "Running quality scan...")
 					issues, err := quality.Scan(root)
 					if err != nil {
 						return fmt.Errorf("running quality: %w", err)

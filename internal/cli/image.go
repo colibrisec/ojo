@@ -39,6 +39,7 @@ func imageCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			fmt.Fprintln(cmd.ErrOrStderr(), "Pulling and scanning image layers...")
 			pkgs, osLabel, err := imageScan(cmd.Context(), ref, platform)
 			if err != nil {
 				return err
@@ -52,6 +53,7 @@ func imageCmd() *cobra.Command {
 				return report.SBOM(cmd.OutOrStdout(), pkgs, sbomVersion)
 			}
 
+			fmt.Fprintln(cmd.ErrOrStderr(), "Querying OSV for known vulnerabilities...")
 			findings, err := osvScan(cmd.Context(), pkgs)
 			if err != nil {
 				return fmt.Errorf("querying OSV: %w", err)
