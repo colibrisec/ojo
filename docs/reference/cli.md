@@ -60,6 +60,7 @@ Flags:
       --kev                        flag findings whose CVE is in CISA's Known Exploited Vulnerabilities catalog (confirmed real-world exploitation); annotation only, doesn't affect exit code
       --respect-gitignore          skip untracked files that git ignores (e.g. build output, coverage reports); no effect outside a git repository
       --rules-dir string           directory of custom *.yaml SAST rules (default: <path>/.ojo/rules, if present); runs alongside --scanners sast
+      --sarif-omit-suppressed      omit results suppressed by .ojoignore or a VEX file from -f sarif output instead of marking them suppressed; for consumers such as GitHub code scanning that ignore SARIF suppressions
       --scanners string            comma-separated scanners to run: vuln, secret, misconfig, sast, quality (default "vuln")
       --secret-git-history         also scan git commit history (current branch) for secrets that were committed and later removed; requires root to be a git repository
       --secret-rules-file string   path to a YAML file of additional secret rules (same shape as the built-in rules), run alongside --scanners secret
@@ -85,6 +86,10 @@ The catalog is cached at `~/.cache/ojo/kev.json` (refreshed once a day); if CISA
 ### `--secret-rules-file`
 
 Loads additional secret rules from a YAML file — the same `rules: [...]` shape as the built-in rules (`id`/`description`/`regex`/`keywords`/`minEntropy`/`severity`) — and runs them alongside the built-in rules whenever `secret` is in `--scanners`. A custom rule `id` colliding with a built-in one is a load error.
+
+### `--sarif-omit-suppressed`
+
+With `-f sarif`, suppressed results are normally kept in the output as native SARIF `suppressions`. GitHub code scanning doesn't use that property, so those results stay open as alerts. This flag leaves suppressed results (and rules only they used) out of the SARIF entirely, so their alerts close on the next scan. Applies to `ojo fs` and `ojo image`; the exit code and other formats are unaffected.
 
 ### `--respect-gitignore`
 
@@ -131,6 +136,7 @@ Flags:
       --ignore-file string         path to a .ojoignore file (default: .ojoignore in the current directory, if present)
       --kev                        flag findings whose CVE is in CISA's Known Exploited Vulnerabilities catalog (confirmed real-world exploitation); annotation only, doesn't affect exit code
       --platform string            image platform to pull as os/arch, e.g. linux/arm64 (default: linux/amd64)
+      --sarif-omit-suppressed      omit results suppressed by .ojoignore or a VEX file from -f sarif output instead of marking them suppressed; for consumers such as GitHub code scanning that ignore SARIF suppressions
       --vex-file string            path to an OpenVEX document; suppresses findings its not_affected/fixed statements cover (matched by product purl and CVE/alias)
 ```
 

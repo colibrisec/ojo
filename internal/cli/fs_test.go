@@ -396,3 +396,26 @@ func TestFsCmd_RespectGitignore(t *testing.T) {
 		t.Fatalf("with --respect-gitignore the ignored file must be skipped, got %v: %s", err, out)
 	}
 }
+
+func TestFsCmd_SARIFOmitSuppressed(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, ".env", "AWS_ACCESS_KEY_ID=AKIAABCDEFGHIJKLMNOP\n")
+	write(t, dir, ".ojoignore", "aws-access-key-id  .env  # accepted risk\n")
+	ignore := filepath.Join(dir, ".ojoignore")
+
+	out, err := run(t, dir, "--scanners", "secret", "-f", "sarif", "--ignore-file", ignore)
+	if err != nil {
+		t.Fatalf("suppressed findings must not fail the scan, got %v", err)
+	}
+	if !strings.Contains(out, `"suppressions"`) || !strings.Contains(out, "aws-access-key-id") {
+		t.Errorf("by default the suppressed result is kept in SARIF with a suppression, got %q", out)
+	}
+
+	out, err = run(t, dir, "--scanners", "secret", "-f", "sarif", "--ignore-file", ignore, "--sarif-omit-suppressed")
+	if err != nil {
+		t.Fatalf("suppressed findings must not fail the scan, got %v", err)
+	}
+	if strings.Contains(out, "aws-access-key-id") || strings.Contains(out, `"suppressions"`) {
+		t.Errorf("with --sarif-omit-suppressed the suppressed result must be dropped, got %q", out)
+	}
+}

@@ -237,3 +237,30 @@ func TestImageCmd_KevLoadErrorPropagates(t *testing.T) {
 		t.Errorf("expected the KEV load error to propagate, got %v", err)
 	}
 }
+
+func TestImageCmd_SARIFOmitSuppressed(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, ".ojoignore", "CVE-2024-1  *  # accepted risk\n")
+	stubImageScan(t, []model.Package{{Name: "x", Version: "1"}}, "debian 12", nil)
+	stubOSVScan(t, []model.Finding{{
+		Package: model.Package{Name: "x", Version: "1", Source: "img"},
+		Vulns:   []model.Vulnerability{{ID: "CVE-2024-1"}},
+	}}, nil)
+	ignore := filepath.Join(dir, ".ojoignore")
+
+	out, err := runImage(t, "-f", "sarif", "--ignore-file", ignore, "alpine:latest")
+	if err != nil {
+		t.Fatalf("suppressed findings must not fail the scan, got %v", err)
+	}
+	if !strings.Contains(out, `"suppressions"`) || !strings.Contains(out, "CVE-2024-1") {
+		t.Errorf("by default the suppressed result is kept in SARIF with a suppression, got %q", out)
+	}
+
+	out, err = runImage(t, "-f", "sarif", "--ignore-file", ignore, "--sarif-omit-suppressed", "alpine:latest")
+	if err != nil {
+		t.Fatalf("suppressed findings must not fail the scan, got %v", err)
+	}
+	if strings.Contains(out, "CVE-2024-1") || strings.Contains(out, `"suppressions"`) {
+		t.Errorf("with --sarif-omit-suppressed the suppressed result must be dropped, got %q", out)
+	}
+}

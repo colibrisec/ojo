@@ -49,7 +49,7 @@ $ ojo fs --ignore-file ci/.ojoignore .
 
 A missing default `.ojoignore` is not an error. An explicit `--ignore-file path` that doesn't exist, or a malformed line, is.
 
-**Suppressed results are omitted from `table`/`json`/`sbom`/GitLab output entirely** — they don't count toward the exit code either. `-f sarif` is the exception: suppressed results stay in the output as native SARIF `suppressions` (`kind: external`, your reason as `justification`), so tools that understand SARIF suppressions (like GitHub's Security tab) can still show them as accepted rather than hiding the audit trail.
+**Suppressed results are omitted from `table`/`json`/`sbom`/GitLab output entirely** — they don't count toward the exit code either. `-f sarif` is the exception: suppressed results stay in the output as native SARIF `suppressions` (`kind: external`, your reason as `justification`), so tools that understand SARIF suppressions can still show them as accepted rather than hiding the audit trail. GitHub code scanning does **not** use SARIF suppressions, so suppressed results stay open as alerts in the Security tab; pass `--sarif-omit-suppressed` when uploading to GitHub to leave them out of the SARIF (their alerts then close on the next scan).
 
 ## `--scanners`
 

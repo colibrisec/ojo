@@ -36,6 +36,7 @@ func fsCmd() *cobra.Command {
 	var kevFlag bool
 	var vexFile string
 	var respectGitignore bool
+	var sarifOmitSuppressed bool
 
 	cmd := &cobra.Command{
 		Use:   "fs [path]",
@@ -212,7 +213,7 @@ func fsCmd() *cobra.Command {
 						return err
 					}
 				case "sarif":
-					if err := rep.SARIF(cmd.OutOrStdout(), root); err != nil {
+					if err := rep.SARIFWith(cmd.OutOrStdout(), root, report.SARIFOptions{OmitSuppressed: sarifOmitSuppressed}); err != nil {
 						return err
 					}
 				case "vex":
@@ -242,6 +243,7 @@ func fsCmd() *cobra.Command {
 	cmd.Flags().StringVar(&secretRulesFile, "secret-rules-file", "", "path to a YAML file of additional secret rules (same shape as the built-in rules), run alongside --scanners secret")
 	cmd.Flags().BoolVar(&secretGitHistory, "secret-git-history", false, "also scan git commit history (current branch) for secrets that were committed and later removed; requires root to be a git repository")
 	cmd.Flags().BoolVar(&kevFlag, "kev", false, "flag findings whose CVE is in CISA's Known Exploited Vulnerabilities catalog (confirmed real-world exploitation); annotation only, doesn't affect exit code")
+	cmd.Flags().BoolVar(&sarifOmitSuppressed, "sarif-omit-suppressed", false, "omit results suppressed by .ojoignore or a VEX file from -f sarif output instead of marking them suppressed; for consumers such as GitHub code scanning that ignore SARIF suppressions")
 	cmd.Flags().BoolVar(&respectGitignore, "respect-gitignore", false, "skip untracked files that git ignores (e.g. build output, coverage reports); no effect outside a git repository")
 	cmd.Flags().StringVar(&vexFile, "vex-file", "", "path to an OpenVEX document; suppresses findings its not_affected/fixed statements cover (matched by product purl and CVE/alias)")
 	return cmd

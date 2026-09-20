@@ -103,7 +103,15 @@ type sarifRegion struct {
 	StartLine int `json:"startLine"`
 }
 
+type SARIFOptions struct {
+	OmitSuppressed bool
+}
+
 func (r Report) SARIF(w io.Writer, root string) error {
+	return r.SARIFWith(w, root, SARIFOptions{})
+}
+
+func (r Report) SARIFWith(w io.Writer, root string, opts SARIFOptions) error {
 	rules := map[string]sarifRule{}
 	results := []sarifResult{}
 
@@ -144,7 +152,12 @@ func (r Report) SARIF(w io.Writer, root string) error {
 		})
 	}
 
-	for _, sf := range r.SuppressedFindings {
+	suppressedFindings, suppressedIssues := r.SuppressedFindings, r.SuppressedIssues
+	if opts.OmitSuppressed {
+		suppressedFindings, suppressedIssues = nil, nil
+	}
+
+	for _, sf := range suppressedFindings {
 		v := sf.Vuln
 		if _, ok := rules[v.ID]; !ok {
 			rules[v.ID] = sarifRule{ID: v.ID, ShortDescription: sarifMessage{Text: v.Summary}, HelpURI: v.URL}
@@ -161,7 +174,7 @@ func (r Report) SARIF(w io.Writer, root string) error {
 		})
 	}
 
-	for _, si := range r.SuppressedIssues {
+	for _, si := range suppressedIssues {
 		iss := si.Issue
 		if _, ok := rules[iss.RuleID]; !ok {
 			rules[iss.RuleID] = sarifIssueRule(iss)
