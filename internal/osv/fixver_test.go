@@ -1,6 +1,7 @@
 package osv
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/colibrisec/ojo/internal/model"
@@ -80,5 +81,19 @@ func TestResolveFixedVersion(t *testing.T) {
 	got = resolveFixedVersion(d, model.Package{Name: "requests", Version: "2.6.0", Ecosystem: "PyPI"})
 	if got != "" {
 		t.Errorf("resolveFixedVersion for unrelated package = %q, want empty", got)
+	}
+}
+
+func TestResolveFixedVersionMatchesSourcePackage(t *testing.T) {
+	var d vulnDetail
+	err := json.Unmarshal([]byte(`{"affected":[{"package":{"name":"openssl","ecosystem":"Alpine:v3.23"},
+		"ranges":[{"events":[{"introduced":"0"},{"fixed":"3.5.8-r0"}]}]}]}`), &d)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pkg := model.Package{Name: "libcrypto3", Origin: "openssl", Version: "3.5.6-r0", Ecosystem: "Alpine:v3.23"}
+	if got := resolveFixedVersion(d, pkg); got != "3.5.8-r0" {
+		t.Errorf("fixed version for binary package must be resolved via its source package, got %q", got)
 	}
 }

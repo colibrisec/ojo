@@ -10,7 +10,7 @@ import (
 func resolveFixedVersion(d vulnDetail, pkg model.Package) string {
 	var best string
 	for _, aff := range d.Affected {
-		if aff.Package.Name != pkg.Name || aff.Package.Ecosystem != string(pkg.Ecosystem) {
+		if aff.Package.Name != pkg.QueryName() || aff.Package.Ecosystem != string(pkg.Ecosystem) {
 			continue
 		}
 		for _, r := range aff.Ranges {
