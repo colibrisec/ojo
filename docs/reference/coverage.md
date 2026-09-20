@@ -28,6 +28,8 @@ What ojo can actually scan today.
 | Ubuntu | dpkg | ✅ |
 | RHEL / CentOS / Fedora / Amazon Linux / Rocky / AlmaLinux | rpm | ❌ Detected but explicitly rejected with a clear error, rather than silently returning zero packages |
 
+`ojo image` also reports vulnerable Node.js packages installed in the image, found through `node_modules/<package>/package.json` (including the npm bundled with Node.js base images). Other language runtimes are not scanned inside images yet.
+
 ## IaC / misconfiguration formats
 
 | Format | Status |

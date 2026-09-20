@@ -23,7 +23,7 @@ func imageCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "image [ref]",
-		Short: "Scan a container image for vulnerable OS packages",
+		Short: "Scan a container image for vulnerable OS and Node.js packages",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ref := args[0]
@@ -45,7 +45,7 @@ func imageCmd() *cobra.Command {
 				return err
 			}
 			if len(pkgs) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "No OS packages found.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No packages found.")
 				return nil
 			}
 

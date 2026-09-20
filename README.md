@@ -11,7 +11,7 @@ ojo is an open source security scanner for dependencies, secrets, misconfigurati
 
 ```console
 $ ojo fs .                    # dependency vulnerabilities in a repo
-$ ojo image python:3.14-slim  # OS package vulnerabilities in a container image
+$ ojo image python:3.14-slim  # OS and Node.js package vulnerabilities in a container image
 ```
 
 ## Installation

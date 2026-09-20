@@ -29,7 +29,7 @@ Examples:
 
 Available Commands:
   fs          Scan a filesystem path for vulnerabilities, secrets, and misconfiguration
-  image       Scan a container image for vulnerable OS packages
+  image       Scan a container image for vulnerable OS and Node.js packages
 
 Flags:
   -h, --help      help for ojo

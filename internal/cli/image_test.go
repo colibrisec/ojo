@@ -55,7 +55,7 @@ func TestImageCmd_NoPackagesFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if !strings.Contains(out, "No OS packages found") {
+	if !strings.Contains(out, "No packages found") {
 		t.Errorf("got %q", out)
 	}
 }
