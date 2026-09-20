@@ -59,9 +59,7 @@ func fsCmd() *cobra.Command {
 			}
 
 			if respectGitignore {
-				if err := walk.RespectGitignore(root); err != nil {
-					return err
-				}
+				walk.RespectGitignore(root)
 				defer walk.RespectGitignore("")
 			}
 

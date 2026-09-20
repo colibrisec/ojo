@@ -117,9 +117,7 @@ func TestRespectGitignore_SkipsIgnoredFilesAndDirs(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "app.log"), "x")
 	t.Cleanup(func() { RespectGitignore("") })
 
-	if err := RespectGitignore(dir); err != nil {
-		t.Fatal(err)
-	}
+	RespectGitignore(dir)
 	got := walked(t, dir)
 	want := []string{".gitignore", "src/main.go"}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
@@ -137,9 +135,7 @@ func TestRespectGitignore_KeepsTrackedFilesThatMatchIgnorePatterns(t *testing.T)
 	writeFile(t, filepath.Join(dir, ".gitignore"), "*.log\n")
 	t.Cleanup(func() { RespectGitignore("") })
 
-	if err := RespectGitignore(dir); err != nil {
-		t.Fatal(err)
-	}
+	RespectGitignore(dir)
 	got := walked(t, dir)
 	found := false
 	for _, p := range got {
@@ -160,10 +156,27 @@ func TestRespectGitignore_OutsideGitRepoIsNoop(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "a.txt"), "a")
 	t.Cleanup(func() { RespectGitignore("") })
 
-	if err := RespectGitignore(dir); err != nil {
-		t.Fatal(err)
-	}
+	RespectGitignore(dir)
 	if got := walked(t, dir); len(got) != 1 || got[0] != "a.txt" {
 		t.Errorf("visited = %v, want [a.txt]", got)
+	}
+}
+
+func TestRespectGitignore_UnresolvableWorkingDirectoryIsNoop(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	if err := os.Remove(dir); err != nil {
+		t.Skip("cannot remove the working directory on this platform")
+	}
+	t.Cleanup(func() { RespectGitignore("") })
+
+	RespectGitignore("relative")
+	if gitIgnored != nil {
+		t.Errorf("a root that cannot be made absolute must not enable filtering, got %v", gitIgnored)
+	}
+
+	gitIgnored = map[string]bool{"/ignored": true}
+	if isGitIgnored("relative") {
+		t.Error("a path that cannot be made absolute must not be reported as ignored")
 	}
 }

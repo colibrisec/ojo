@@ -19,18 +19,18 @@ var gitIgnored map[string]bool
 // RespectGitignore makes Walk skip untracked files that git ignores under
 // root. Outside a git repository, or without git, it has no effect. An empty
 // root clears the setting.
-func RespectGitignore(root string) error {
+func RespectGitignore(root string) {
 	gitIgnored = nil
 	if root == "" {
-		return nil
+		return
 	}
 	abs, err := filepath.Abs(root)
 	if err != nil {
-		return err
+		return
 	}
 	out, err := exec.Command("git", "-C", abs, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z").Output()
 	if err != nil {
-		return nil
+		return
 	}
 	ignored := map[string]bool{}
 	for _, p := range bytes.Split(out, []byte{0}) {
@@ -40,7 +40,6 @@ func RespectGitignore(root string) error {
 		ignored[filepath.Join(abs, filepath.FromSlash(strings.TrimSuffix(string(p), "/")))] = true
 	}
 	gitIgnored = ignored
-	return nil
 }
 
 func isGitIgnored(path string) bool {
