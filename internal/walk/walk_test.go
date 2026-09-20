@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -79,5 +80,90 @@ func TestWalk_NonexistentRootIsAnError(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected an error for a nonexistent root")
+	}
+}
+
+func gitInit(t *testing.T, dir string) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+}
+
+func walked(t *testing.T, dir string) []string {
+	t.Helper()
+	var visited []string
+	err := Walk(dir, func(path string, d fs.DirEntry) error {
+		rel, _ := filepath.Rel(dir, path)
+		visited = append(visited, filepath.ToSlash(rel))
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(visited)
+	return visited
+}
+
+func TestRespectGitignore_SkipsIgnoredFilesAndDirs(t *testing.T) {
+	dir := t.TempDir()
+	gitInit(t, dir)
+	writeFile(t, filepath.Join(dir, ".gitignore"), "dist/\n*.log\n")
+	writeFile(t, filepath.Join(dir, "src", "main.go"), "package main")
+	writeFile(t, filepath.Join(dir, "dist", "bundle.js"), "x")
+	writeFile(t, filepath.Join(dir, "app.log"), "x")
+	t.Cleanup(func() { RespectGitignore("") })
+
+	if err := RespectGitignore(dir); err != nil {
+		t.Fatal(err)
+	}
+	got := walked(t, dir)
+	want := []string{".gitignore", "src/main.go"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("visited = %v, want %v", got, want)
+	}
+}
+
+func TestRespectGitignore_KeepsTrackedFilesThatMatchIgnorePatterns(t *testing.T) {
+	dir := t.TempDir()
+	gitInit(t, dir)
+	writeFile(t, filepath.Join(dir, "keep.log"), "x")
+	if out, err := exec.Command("git", "-C", dir, "add", "keep.log").CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v: %s", err, out)
+	}
+	writeFile(t, filepath.Join(dir, ".gitignore"), "*.log\n")
+	t.Cleanup(func() { RespectGitignore("") })
+
+	if err := RespectGitignore(dir); err != nil {
+		t.Fatal(err)
+	}
+	got := walked(t, dir)
+	found := false
+	for _, p := range got {
+		if p == "keep.log" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("tracked file keep.log must still be scanned, visited = %v", got)
+	}
+}
+
+func TestRespectGitignore_OutsideGitRepoIsNoop(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "a.txt"), "a")
+	t.Cleanup(func() { RespectGitignore("") })
+
+	if err := RespectGitignore(dir); err != nil {
+		t.Fatal(err)
+	}
+	if got := walked(t, dir); len(got) != 1 || got[0] != "a.txt" {
+		t.Errorf("visited = %v, want [a.txt]", got)
 	}
 }

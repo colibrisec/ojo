@@ -58,6 +58,7 @@ Flags:
   -g, --gitlab                     write GitLab-compatible security reports instead of -f/--format output; runs all scanners
       --ignore-file string         path to a .ojoignore file (default: .ojoignore in the current directory, if present)
       --kev                        flag findings whose CVE is in CISA's Known Exploited Vulnerabilities catalog (confirmed real-world exploitation); annotation only, doesn't affect exit code
+      --respect-gitignore          skip untracked files that git ignores (e.g. build output, coverage reports); no effect outside a git repository
       --rules-dir string           directory of custom *.yaml SAST rules (default: <path>/.ojo/rules, if present); runs alongside --scanners sast
       --scanners string            comma-separated scanners to run: vuln, secret, misconfig, sast, quality (default "vuln")
       --secret-git-history         also scan git commit history (current branch) for secrets that were committed and later removed; requires root to be a git repository
@@ -84,6 +85,10 @@ The catalog is cached at `~/.cache/ojo/kev.json` (refreshed once a day); if CISA
 ### `--secret-rules-file`
 
 Loads additional secret rules from a YAML file — the same `rules: [...]` shape as the built-in rules (`id`/`description`/`regex`/`keywords`/`minEntropy`/`severity`) — and runs them alongside the built-in rules whenever `secret` is in `--scanners`. A custom rule `id` colliding with a built-in one is a load error.
+
+### `--respect-gitignore`
+
+Skips untracked files that git ignores (build output, coverage reports, local `.env` files), so a scan of a working copy matches what CI sees in a fresh checkout. Off by default, because an ignored file such as a real `.env` on disk is otherwise still scanned. Tracked files are always scanned, even if they match an ignore pattern. No effect outside a git repository or without `git` on `PATH`.
 
 ### `--secret-git-history`
 

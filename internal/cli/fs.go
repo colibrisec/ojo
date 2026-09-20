@@ -20,6 +20,7 @@ import (
 	"github.com/colibrisec/ojo/internal/sast"
 	"github.com/colibrisec/ojo/internal/secret"
 	"github.com/colibrisec/ojo/internal/vex"
+	"github.com/colibrisec/ojo/internal/walk"
 )
 
 func fsCmd() *cobra.Command {
@@ -34,6 +35,7 @@ func fsCmd() *cobra.Command {
 	var secretGitHistory bool
 	var kevFlag bool
 	var vexFile string
+	var respectGitignore bool
 
 	cmd := &cobra.Command{
 		Use:   "fs [path]",
@@ -54,6 +56,13 @@ func fsCmd() *cobra.Command {
 			}
 			if cfg.Scanners != "" && !cmd.Flags().Changed("scanners") {
 				scanners = cfg.Scanners
+			}
+
+			if respectGitignore {
+				if err := walk.RespectGitignore(root); err != nil {
+					return err
+				}
+				defer walk.RespectGitignore("")
 			}
 
 			sbomVersion, err := report.ParseCycloneDXVersion(cyclonedxVersion)
@@ -235,6 +244,7 @@ func fsCmd() *cobra.Command {
 	cmd.Flags().StringVar(&secretRulesFile, "secret-rules-file", "", "path to a YAML file of additional secret rules (same shape as the built-in rules), run alongside --scanners secret")
 	cmd.Flags().BoolVar(&secretGitHistory, "secret-git-history", false, "also scan git commit history (current branch) for secrets that were committed and later removed; requires root to be a git repository")
 	cmd.Flags().BoolVar(&kevFlag, "kev", false, "flag findings whose CVE is in CISA's Known Exploited Vulnerabilities catalog (confirmed real-world exploitation); annotation only, doesn't affect exit code")
+	cmd.Flags().BoolVar(&respectGitignore, "respect-gitignore", false, "skip untracked files that git ignores (e.g. build output, coverage reports); no effect outside a git repository")
 	cmd.Flags().StringVar(&vexFile, "vex-file", "", "path to an OpenVEX document; suppresses findings its not_affected/fixed statements cover (matched by product purl and CVE/alias)")
 	return cmd
 }

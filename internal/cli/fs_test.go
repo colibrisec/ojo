@@ -376,3 +376,23 @@ func runGit(t *testing.T, dir string, args ...string) {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
 }
+
+func TestFsCmd_RespectGitignore(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := t.TempDir()
+	if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	write(t, dir, ".gitignore", "build/\n")
+	write(t, dir, "build/.env", "AWS_ACCESS_KEY_ID=AKIAABCDEFGHIJKLMNOP\n")
+
+	if _, err := run(t, dir, "--scanners", "secret"); !errors.Is(err, ErrFindingsFound) {
+		t.Fatalf("without the flag, ignored files must still be scanned, got %v", err)
+	}
+	out, err := run(t, dir, "--scanners", "secret", "--respect-gitignore")
+	if err != nil {
+		t.Fatalf("with --respect-gitignore the ignored file must be skipped, got %v: %s", err, out)
+	}
+}
