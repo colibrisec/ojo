@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"testing"
+
+	"github.com/colibrisec/ojo/internal/model"
 )
 
 func TestReadImageFSFollowsSymlinkedOSRelease(t *testing.T) {
@@ -18,10 +20,11 @@ func TestReadImageFSFollowsSymlinkedOSRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	osRelease, _, dpkgStatus, err := readImageFS(tar.NewReader(&buf))
+	files, err := readImageFS(tar.NewReader(&buf))
 	if err != nil {
 		t.Fatal(err)
 	}
+	osRelease, dpkgStatus := files.osRelease, files.dpkgStatus
 	if len(osRelease) == 0 {
 		t.Fatal("expected os-release content to be read via the usr/lib/os-release fallback, got empty")
 	}
@@ -134,5 +137,60 @@ func TestParseDpkgRecordsSourcePackage(t *testing.T) {
 		if pkgs[i].Origin != w {
 			t.Errorf("%s: want Origin=%q, got %q", pkgs[i].Name, w, pkgs[i].Origin)
 		}
+	}
+}
+
+func TestNodePackage(t *testing.T) {
+	cases := []struct {
+		path string
+		ok   bool
+		want model.Package
+	}{
+		{"usr/local/lib/node_modules/npm/node_modules/tar/package.json", true, model.Package{Name: "tar", Version: "7.5.11"}},
+		{"app/node_modules/@sigstore/core/package.json", true, model.Package{Name: "@sigstore/core", Version: "2.0.0"}},
+		{"app/node_modules/a/node_modules/b/package.json", true, model.Package{Name: "b", Version: "1.0.0"}},
+		{"app/package.json", false, model.Package{}},
+		{"app/node_modules/a/lib/package.json", false, model.Package{}},
+		{"app/node_modules/.bin/package.json", false, model.Package{}},
+	}
+	for _, c := range cases {
+		data := []byte(`{"name": "` + c.want.Name + `", "version": "` + c.want.Version + `"}`)
+		if c.want.Name == "" {
+			data = []byte(`{"name": "x", "version": "1.0.0"}`)
+		}
+		got, ok := nodePackage(c.path, data)
+		if ok != c.ok {
+			t.Errorf("nodePackage(%q) ok = %v, want %v", c.path, ok, c.ok)
+			continue
+		}
+		if ok && (got.Name != c.want.Name || got.Version != c.want.Version || got.Ecosystem != model.EcosystemNpm || got.Source != c.path) {
+			t.Errorf("nodePackage(%q) = %+v", c.path, got)
+		}
+	}
+	if _, ok := nodePackage("app/node_modules/x/package.json", []byte(`{"name": "x"}`)); ok {
+		t.Error("package.json without a version must be ignored")
+	}
+	if _, ok := nodePackage("app/node_modules/x/package.json", []byte(`not json`)); ok {
+		t.Error("invalid package.json must be ignored")
+	}
+}
+
+func TestReadImageFSCollectsNodePackages(t *testing.T) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	writeTarFile(t, tw, "etc/os-release", []byte("ID=alpine\nVERSION_ID=3.23.4\n"))
+	writeTarFile(t, tw, "usr/local/lib/node_modules/npm/node_modules/tar/package.json", []byte(`{"name":"tar","version":"7.5.11"}`))
+	writeTarFile(t, tw, "usr/local/lib/node_modules/npm/node_modules/tar/lib/package.json", []byte(`{"type":"module"}`))
+	writeTarFile(t, tw, "app/package.json", []byte(`{"name":"app","version":"1.0.0"}`))
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := readImageFS(tar.NewReader(&buf))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files.npm) != 1 || files.npm[0].Name != "tar" || files.npm[0].Version != "7.5.11" {
+		t.Errorf("expected only node_modules/tar, got %+v", files.npm)
 	}
 }

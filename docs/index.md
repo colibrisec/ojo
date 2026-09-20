@@ -5,7 +5,7 @@
 It scans:
 
 - **Filesystems and source repos** (`ojo fs`) — dependency manifests across ten ecosystems, hardcoded secrets, Dockerfile/Kubernetes/Terraform misconfiguration, and source-level SAST across Go, Python, JavaScript/TypeScript, PHP, Ruby, and Java
-- **Container images** (`ojo image`) — installed OS packages (apk/dpkg) against known vulnerabilities
+- **Container images** (`ojo image`) — installed OS packages (apk/dpkg) and Node.js packages against known vulnerabilities
 
 Vulnerability data comes from [OSV.dev](https://osv.dev), the same aggregated advisory database (GitHub Security Advisories, PyPA, RustSec, Debian/Alpine security trackers, and more) that underpins most modern scanners.
 
