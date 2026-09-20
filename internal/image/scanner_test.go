@@ -106,3 +106,33 @@ func TestCleanPath(t *testing.T) {
 		}
 	}
 }
+
+func TestParseApkRecordsSourcePackage(t *testing.T) {
+	data := []byte("P:libcrypto3\nV:3.5.6-r0\no:openssl\n\nP:busybox\nV:1.37.0-r0\no:busybox\n\nP:nosource\nV:1.0-r0\n\n")
+	pkgs := parseApk(data, "Alpine:v3.23")
+	if len(pkgs) != 3 {
+		t.Fatalf("expected 3 packages, got %+v", pkgs)
+	}
+	if pkgs[0].Name != "libcrypto3" || pkgs[0].Origin != "openssl" {
+		t.Errorf("libcrypto3: want Name=libcrypto3 Origin=openssl, got %+v", pkgs[0])
+	}
+	if pkgs[2].Origin != "" {
+		t.Errorf("package without o: should have empty Origin, got %q", pkgs[2].Origin)
+	}
+}
+
+func TestParseDpkgRecordsSourcePackage(t *testing.T) {
+	data := []byte("Package: libc6\nStatus: install ok installed\nSource: glibc (2.36-9+deb12u4)\nVersion: 2.36-9+deb12u4\n\n" +
+		"Package: libbash\nStatus: install ok installed\nSource: bash\nVersion: 5.2-1\n\n" +
+		"Package: tar\nStatus: install ok installed\nVersion: 1.34-1\n\n")
+	pkgs := parseDpkg(data, "Debian:12")
+	if len(pkgs) != 3 {
+		t.Fatalf("expected 3 packages, got %+v", pkgs)
+	}
+	want := []string{"glibc", "bash", ""}
+	for i, w := range want {
+		if pkgs[i].Origin != w {
+			t.Errorf("%s: want Origin=%q, got %q", pkgs[i].Name, w, pkgs[i].Origin)
+		}
+	}
+}

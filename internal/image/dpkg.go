@@ -25,7 +25,11 @@ func parseDpkg(data []byte, ecosystem model.Ecosystem) []model.Package {
 		name := header.Get("Package")
 		version := header.Get("Version")
 		if name != "" && version != "" {
-			pkgs = append(pkgs, model.Package{Name: name, Version: version, Ecosystem: ecosystem, Source: "dpkg"})
+			var origin string
+			if f := strings.Fields(header.Get("Source")); len(f) > 0 {
+				origin = f[0]
+			}
+			pkgs = append(pkgs, model.Package{Name: name, Version: version, Origin: origin, Ecosystem: ecosystem, Source: "dpkg"})
 		}
 		if err != nil {
 			break

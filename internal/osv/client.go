@@ -56,7 +56,7 @@ func Scan(ctx context.Context, pkgs []model.Package) ([]model.Finding, error) {
 
 		req := batchRequest{Queries: make([]batchQuery, len(chunk))}
 		for i, p := range chunk {
-			req.Queries[i].Package.Name = p.Name
+			req.Queries[i].Package.Name = p.QueryName()
 			req.Queries[i].Package.Ecosystem = string(p.Ecosystem)
 			req.Queries[i].Version = p.Version
 		}

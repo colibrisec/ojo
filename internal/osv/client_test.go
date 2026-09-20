@@ -69,3 +69,35 @@ func TestScanChunksLargeBatches(t *testing.T) {
 		t.Errorf("expected maxBatchSize+1 packages to be split across 2 requests, got %d", requestCount)
 	}
 }
+
+func TestScanQueriesBySourcePackageName(t *testing.T) {
+	var got batchRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		json.NewEncoder(w).Encode(batchResult{Results: make([]batchResultEntry, len(got.Queries))})
+	}))
+	defer srv.Close()
+
+	old := apiBase
+	apiBase = srv.URL
+	defer func() { apiBase = old }()
+
+	pkgs := []model.Package{
+		{Name: "libcrypto3", Origin: "openssl", Version: "3.5.6-r0", Ecosystem: "Alpine:v3.23"},
+		{Name: "busybox", Version: "1.37.0-r0", Ecosystem: "Alpine:v3.23"},
+	}
+	if _, err := Scan(context.Background(), pkgs); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Queries) != 2 {
+		t.Fatalf("expected 2 queries, got %d", len(got.Queries))
+	}
+	if n := got.Queries[0].Package.Name; n != "openssl" {
+		t.Errorf("binary package with an origin must be queried by source name, got %q", n)
+	}
+	if n := got.Queries[1].Package.Name; n != "busybox" {
+		t.Errorf("package without an origin must be queried by its own name, got %q", n)
+	}
+}

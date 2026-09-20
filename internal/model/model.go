@@ -24,6 +24,14 @@ type Package struct {
 	Version   string
 	Ecosystem Ecosystem
 	Source    string // manifest file it was found in
+	Origin    string
+}
+
+func (p Package) QueryName() string {
+	if p.Origin != "" {
+		return p.Origin
+	}
+	return p.Name
 }
 
 type Vulnerability struct {
