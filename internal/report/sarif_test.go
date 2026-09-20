@@ -265,3 +265,77 @@ func TestSARIFEmptyReportProducesValidEmptyArrays(t *testing.T) {
 		t.Errorf("expected results to be [], got %s", run["results"])
 	}
 }
+
+func TestSARIFWithOmitSuppressedDropsSuppressedResultsAndTheirRules(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "repo")
+	r := Report{
+		Findings: []model.Finding{{
+			Package: model.Package{Name: "kept-pkg", Source: filepath.Join(root, "requirements.txt")},
+			Vulns:   []model.Vulnerability{{ID: "CVE-KEPT", Severity: "HIGH"}},
+		}},
+		Issues: []model.Issue{{RuleID: "kept-rule", Severity: "HIGH", File: filepath.Join(root, "a.py"), Line: 1, Message: "kept"}},
+		SuppressedFindings: []ignore.SuppressedFinding{{
+			Package: model.Package{Name: "django", Source: filepath.Join(root, "requirements.txt")},
+			Vuln:    model.Vulnerability{ID: "CVE-SUPPRESSED", Severity: "CRITICAL"},
+			Reason:  "accepted",
+		}},
+		SuppressedIssues: []ignore.SuppressedIssue{{
+			Issue:  model.Issue{RuleID: "suppressed-rule", Severity: "INFO", File: filepath.Join(root, "b.py"), Line: 4, Message: "boom"},
+			Reason: "false positive",
+		}},
+	}
+
+	var buf bytes.Buffer
+	if err := r.SARIFWith(&buf, root, SARIFOptions{OmitSuppressed: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	var log struct {
+		Runs []struct {
+			Tool struct {
+				Driver struct {
+					Rules []struct {
+						ID string `json:"id"`
+					} `json:"rules"`
+				} `json:"driver"`
+			} `json:"tool"`
+			Results []struct {
+				RuleID string `json:"ruleId"`
+			} `json:"results"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &log); err != nil {
+		t.Fatalf("SARIF output isn't valid JSON: %v\n%s", err, buf.String())
+	}
+
+	var results, rules []string
+	for _, res := range log.Runs[0].Results {
+		results = append(results, res.RuleID)
+	}
+	for _, rule := range log.Runs[0].Tool.Driver.Rules {
+		rules = append(rules, rule.ID)
+	}
+	want := []string{"CVE-KEPT", "kept-rule"}
+	if len(results) != 2 || results[0] != want[0] || results[1] != want[1] {
+		t.Errorf("results = %v, want %v", results, want)
+	}
+	if len(rules) != 2 || rules[0] != "CVE-KEPT" || rules[1] != "kept-rule" {
+		t.Errorf("rules = %v, want only the rules of kept results", rules)
+	}
+}
+
+func TestSARIFKeepsSuppressedResultsByDefault(t *testing.T) {
+	r := Report{
+		SuppressedIssues: []ignore.SuppressedIssue{{
+			Issue:  model.Issue{RuleID: "suppressed-rule", Severity: "INFO", File: "b.py", Line: 4, Message: "boom"},
+			Reason: "false positive",
+		}},
+	}
+	var buf bytes.Buffer
+	if err := r.SARIF(&buf, ""); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("suppressed-rule")) {
+		t.Errorf("expected the suppressed result to be present by default, got %s", buf.String())
+	}
+}

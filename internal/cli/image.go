@@ -20,6 +20,7 @@ func imageCmd() *cobra.Command {
 	var cyclonedxVersion string
 	var kevFlag bool
 	var vexFile string
+	var sarifOmitSuppressed bool
 
 	cmd := &cobra.Command{
 		Use:   "image [ref]",
@@ -87,7 +88,7 @@ func imageCmd() *cobra.Command {
 					return err
 				}
 			case "sarif":
-				if err := rep.SARIF(cmd.OutOrStdout(), ""); err != nil {
+				if err := rep.SARIFWith(cmd.OutOrStdout(), "", report.SARIFOptions{OmitSuppressed: sarifOmitSuppressed}); err != nil {
 					return err
 				}
 			case "vex":
@@ -112,6 +113,7 @@ func imageCmd() *cobra.Command {
 	cmd.Flags().StringVar(&platform, "platform", "", "image platform to pull as os/arch, e.g. linux/arm64 (default: linux/amd64)")
 	cmd.Flags().StringVar(&cyclonedxVersion, "cyclonedx-version", "", "CycloneDX spec version for -f sbom output, e.g. 1.4 (default: latest)")
 	cmd.Flags().BoolVar(&kevFlag, "kev", false, "flag findings whose CVE is in CISA's Known Exploited Vulnerabilities catalog (confirmed real-world exploitation); annotation only, doesn't affect exit code")
+	cmd.Flags().BoolVar(&sarifOmitSuppressed, "sarif-omit-suppressed", false, "omit results suppressed by .ojoignore or a VEX file from -f sarif output instead of marking them suppressed; for consumers such as GitHub code scanning that ignore SARIF suppressions")
 	cmd.Flags().StringVar(&vexFile, "vex-file", "", "path to an OpenVEX document; suppresses findings its not_affected/fixed statements cover (matched by product purl and CVE/alias)")
 	return cmd
 }
