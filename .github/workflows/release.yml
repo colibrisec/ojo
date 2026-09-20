@@ -206,7 +206,7 @@ jobs:
       attestations: write
     steps:
       - uses: actions/checkout@v7
-      - uses: colibrisec/ojo-action@a7c5469668eaf34edff10ab3f1119475596c0f2f # v1
+      - uses: colibrisec/ojo-action@a96f5b8e59824026140fc96ecc72adcd099f8d24 # main
         with:
           vulnerabilities: 'false'
           secrets: 'false'
