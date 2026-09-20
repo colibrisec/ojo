@@ -177,3 +177,24 @@ func TestLooksLikePlaceholder(t *testing.T) {
 		}
 	}
 }
+
+func TestScan_SkipsAWSDocumentationCredentials(t *testing.T) {
+	dir := t.TempDir()
+	docs := "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\n" +
+		"aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n"
+	if err := os.WriteFile(filepath.Join(dir, "guide.env"), []byte(docs), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	real := "AWS_ACCESS_KEY_ID=AKIAJ7QZX9K3M2NPLW4B\n"
+	if err := os.WriteFile(filepath.Join(dir, "prod.env"), []byte(real), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := Scan(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(issues) != 1 || issues[0].RuleID != "aws-access-key-id" || filepath.Base(issues[0].File) != "prod.env" {
+		t.Errorf("expected only the real-looking key in prod.env to be flagged, got %+v", issues)
+	}
+}

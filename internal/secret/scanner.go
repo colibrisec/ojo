@@ -123,6 +123,9 @@ func ruleApplies(r Rule, line, lowerLine string) (bool, string) {
 	// just the first, so an early low-entropy match (a label) can't shadow
 	// a real one later on the same line.
 	for _, m := range r.compiled.FindAllString(line, -1) {
+		if awsDocumentationCredentials[m] {
+			continue
+		}
 		if r.MinEntropy == 0 || shannonEntropy(m) >= r.MinEntropy {
 			return true, m
 		}

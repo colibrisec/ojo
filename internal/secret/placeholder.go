@@ -30,6 +30,11 @@ func isLikelyTestFile(path string) bool {
 	return false
 }
 
+var awsDocumentationCredentials = map[string]bool{
+	"AKIAIOSFODNN7EXAMPLE":                     true,
+	"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY": true,
+}
+
 var placeholderMarkers = []string{
 	"example", "placeholder", "changeme", "dummy", "fake", "sample",
 	"foobar", "hunter2", "yourkey", "testtest", "notreal", "redacted",
