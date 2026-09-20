@@ -3,7 +3,19 @@ package image
 import (
 	"archive/tar"
 	"bytes"
+	"context"
+	"io"
+	"net/http/httptest"
+	"sort"
+	"strings"
 	"testing"
+
+	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/registry"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/tarball"
 
 	"github.com/colibrisec/ojo/internal/model"
 )
@@ -193,4 +205,145 @@ func TestReadImageFSCollectsNodePackages(t *testing.T) {
 	if len(files.npm) != 1 || files.npm[0].Name != "tar" || files.npm[0].Version != "7.5.11" {
 		t.Errorf("expected only node_modules/tar, got %+v", files.npm)
 	}
+}
+
+func imageTar(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	names := make([]string, 0, len(files))
+	for n := range files {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	for _, n := range names {
+		writeTarFile(t, tw, n, []byte(files[n]))
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+var alpineNodeImage = map[string]string{
+	"etc/os-release":       "ID=alpine\nVERSION_ID=3.23.4\n",
+	"lib/apk/db/installed": "P:libcrypto3\nV:3.5.6-r0\no:openssl\n\n",
+	"usr/local/lib/node_modules/npm/node_modules/tar/package.json":                     `{"name":"tar","version":"7.5.11"}`,
+	"usr/local/lib/node_modules/npm/node_modules/foo/node_modules/tar/package.json":    `{"name":"tar","version":"7.5.11"}`,
+	"usr/local/lib/node_modules/npm/node_modules/pacote/package.json":                  `{"name":"pacote","version":"19.0.2"}`,
+	"usr/local/lib/node_modules/npm/node_modules/pacote/node_modules/tar/package.json": `{"name":"tar","version":"6.2.0"}`,
+}
+
+func checkAlpineNodeImage(t *testing.T, pkgs []model.Package, label string) {
+	t.Helper()
+	if label != "alpine 3.23.4" {
+		t.Errorf("label = %q, want %q", label, "alpine 3.23.4")
+	}
+	var got []string
+	for _, p := range pkgs {
+		got = append(got, string(p.Ecosystem)+" "+p.Name+"@"+p.Version+" origin="+p.Origin)
+	}
+	sort.Strings(got)
+	want := []string{
+		"Alpine:v3.23 libcrypto3@3.5.6-r0 origin=openssl",
+		"npm pacote@19.0.2 origin=",
+		"npm tar@6.2.0 origin=",
+		"npm tar@7.5.11 origin=",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("packages = %q, want %q (npm packages deduplicated by name and version)", got, want)
+	}
+}
+
+func TestScanFSAlpineWithNodePackages(t *testing.T) {
+	pkgs, label, err := scanFS(bytes.NewReader(imageTar(t, alpineNodeImage)), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkAlpineNodeImage(t, pkgs, label)
+}
+
+func TestScanFSDebian(t *testing.T) {
+	fsTar := imageTar(t, map[string]string{
+		"etc/os-release":      "ID=debian\nVERSION_ID=\"12\"\n",
+		"var/lib/dpkg/status": "Package: libc6\nStatus: install ok installed\nSource: glibc (2.36-9)\nVersion: 2.36-9\n\n",
+	})
+	pkgs, label, err := scanFS(bytes.NewReader(fsTar), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if label != "debian 12" {
+		t.Errorf("label = %q, want %q", label, "debian 12")
+	}
+	if len(pkgs) != 1 || pkgs[0].Name != "libc6" || pkgs[0].Origin != "glibc" || pkgs[0].Ecosystem != "Debian:12" {
+		t.Errorf("unexpected packages: %+v", pkgs)
+	}
+}
+
+func TestScanFSWithoutPackageDatabases(t *testing.T) {
+	pkgs, _, err := scanFS(bytes.NewReader(imageTar(t, map[string]string{"etc/os-release": "ID=alpine\nVERSION_ID=3.23.4\n"})), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pkgs) != 0 {
+		t.Errorf("expected no packages, got %+v", pkgs)
+	}
+}
+
+func TestScanFSRejectsRPMImages(t *testing.T) {
+	_, _, err := scanFS(bytes.NewReader(imageTar(t, map[string]string{"etc/os-release": "ID=rhel\nVERSION_ID=9.3\n"})), "test")
+	if err == nil || !strings.Contains(err.Error(), "rpm-based") {
+		t.Errorf("expected an rpm-based image error, got %v", err)
+	}
+}
+
+func TestScanFSRequiresOSRelease(t *testing.T) {
+	_, _, err := scanFS(bytes.NewReader(imageTar(t, map[string]string{"app/node_modules/x/package.json": `{"name":"x","version":"1.0.0"}`})), "test")
+	if err == nil || !strings.Contains(err.Error(), "could not determine OS") {
+		t.Errorf("expected an unknown OS error, got %v", err)
+	}
+}
+
+func TestScanFSInvalidTar(t *testing.T) {
+	_, _, err := scanFS(strings.NewReader(strings.Repeat("x", 512)), "test")
+	if err == nil || !strings.Contains(err.Error(), "reading image filesystem") {
+		t.Errorf("expected a filesystem read error, got %v", err)
+	}
+}
+
+func TestScanInvalidReference(t *testing.T) {
+	_, _, err := Scan(context.Background(), "not a valid reference!", "")
+	if err == nil || !strings.Contains(err.Error(), "pulling") {
+		t.Errorf("expected a pull error, got %v", err)
+	}
+}
+
+func TestScanPullsImageFromRegistry(t *testing.T) {
+	srv := httptest.NewServer(registry.New())
+	defer srv.Close()
+
+	layer, err := tarball.LayerFromOpener(func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(imageTar(t, alpineNodeImage))), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := mutate.AppendLayers(empty.Image, layer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := strings.TrimPrefix(srv.URL, "http://") + "/test/node:latest"
+	parsed, err := name.ParseReference(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.Write(parsed, img); err != nil {
+		t.Fatal(err)
+	}
+
+	pkgs, label, err := Scan(context.Background(), ref, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkAlpineNodeImage(t, pkgs, label)
 }

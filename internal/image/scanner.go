@@ -16,8 +16,11 @@ func Scan(ctx context.Context, ref, platform string) ([]model.Package, string, e
 		return nil, "", fmt.Errorf("pulling %s: %w", ref, err)
 	}
 	defer rc.Close()
+	return scanFS(rc, ref)
+}
 
-	files, err := readImageFS(tar.NewReader(rc))
+func scanFS(r io.Reader, ref string) ([]model.Package, string, error) {
+	files, err := readImageFS(tar.NewReader(r))
 	if err != nil {
 		return nil, "", fmt.Errorf("reading image filesystem: %w", err)
 	}
