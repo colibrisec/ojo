@@ -24,6 +24,10 @@ Images are always pulled as `linux/amd64`. There's no `--platform` flag yet.
 
 ojo reads `/etc/os-release` to determine the ecosystem string it sends to OSV (`Alpine:v3.18`, `Debian:13`, `Ubuntu:22.04:LTS`, ...). On some images `/etc/os-release` is a symlink to `/usr/lib/os-release` — ojo follows that correctly. If the OS/version can't be determined, the scan is refused outright rather than sending OSV an unscoped query (an unscoped ecosystem causes OSV to loosely match package *names* across unrelated ecosystems — this was a real bug caught while building ojo, not a hypothetical).
 
+The exception is an image with no `os-release` *and* no apk/dpkg database — a `scratch`-style image holding just a static binary. There are no OS packages to scope, so the scan proceeds (Node.js packages are still reported) instead of being refused.
+
+With `-f json`, `sarif`, `sbom`, or `vex`, an image with no packages still produces an empty, well-formed document rather than the plain-text `No packages found.` line.
+
 ## Example
 
 ```console
