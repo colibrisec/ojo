@@ -213,6 +213,13 @@ jobs:
           iac: 'false'
           sast: 'false'
           image: ghcr.io/colibrisec/ojo@${{ needs.docker.outputs.digest }}
+      # push-to-registry below needs registry credentials of its own --
+      # the login in the docker job doesn't carry over to this one.
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/attest@v4
         if: ${{ hashFiles('ojo-image-report.json') != '' }}
         with:
@@ -448,8 +455,11 @@ jobs:
         run: |
           pacman-key --init
           pacman-key --populate archlinuxarm
+      # --disable-sandbox: pacman 7's download sandbox needs Landlock, which
+      # Docker's default seccomp profile on the runner doesn't permit
+      # ("Landlock ruleset could not be applied: Operation not permitted").
       - name: Install build deps
-        run: pacman -Syu --noconfirm --needed base-devel go curl
+        run: pacman -Syu --noconfirm --needed --disable-sandbox base-devel go curl
       - name: makepkg (as unprivileged builder -- makepkg refuses to run as root)
         run: |
           useradd -m builder
