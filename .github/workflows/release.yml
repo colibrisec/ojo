@@ -455,8 +455,11 @@ jobs:
         run: |
           pacman-key --init
           pacman-key --populate archlinuxarm
+      # --disable-sandbox: pacman 7's download sandbox needs Landlock, which
+      # Docker's default seccomp profile on the runner doesn't permit
+      # ("Landlock ruleset could not be applied: Operation not permitted").
       - name: Install build deps
-        run: pacman -Syu --noconfirm --needed base-devel go curl
+        run: pacman -Syu --noconfirm --needed --disable-sandbox base-devel go curl
       - name: makepkg (as unprivileged builder -- makepkg refuses to run as root)
         run: |
           useradd -m builder
