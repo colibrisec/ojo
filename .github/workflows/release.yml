@@ -213,6 +213,13 @@ jobs:
           iac: 'false'
           sast: 'false'
           image: ghcr.io/colibrisec/ojo@${{ needs.docker.outputs.digest }}
+      # push-to-registry below needs registry credentials of its own --
+      # the login in the docker job doesn't carry over to this one.
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/attest@v4
         if: ${{ hashFiles('ojo-image-report.json') != '' }}
         with:
