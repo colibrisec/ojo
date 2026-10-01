@@ -429,13 +429,13 @@ jobs:
   # Same test-build, natively on aarch64. Arch Linux itself only targets
   # x86_64 (ARM is the separate Arch Linux ARM/ALARM project), so there's
   # no official aarch64 Arch container image -- this uses a
-  # community-maintained ALARM one instead, run on GitHub's hosted arm64
-  # runner. Native runner + container, no QEMU, same trick as
-  # package-snap above.
+  # community-maintained ALARM one instead (rebuilt daily, multi-arch),
+  # run on GitHub's hosted arm64 runner. Native runner + container, no
+  # QEMU, same trick as package-snap above.
   aur-test-arm64:
     needs: [aur-render]
     runs-on: ubuntu-24.04-arm
-    container: lopsided98/archlinux-aarch64:latest
+    container: menci/archlinuxarm:base-devel
     strategy:
       matrix:
         pkg: [ojo, ojo-bin]
