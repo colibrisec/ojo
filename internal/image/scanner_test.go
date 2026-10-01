@@ -297,10 +297,30 @@ func TestScanFSRejectsRPMImages(t *testing.T) {
 	}
 }
 
-func TestScanFSRequiresOSRelease(t *testing.T) {
-	_, _, err := scanFS(bytes.NewReader(imageTar(t, map[string]string{"app/node_modules/x/package.json": `{"name":"x","version":"1.0.0"}`})), "test")
-	if err == nil || !strings.Contains(err.Error(), "could not determine OS") {
-		t.Errorf("expected an unknown OS error, got %v", err)
+func TestScanFSRequiresOSReleaseForOSPackages(t *testing.T) {
+	for _, db := range []string{"lib/apk/db/installed", "var/lib/dpkg/status"} {
+		_, _, err := scanFS(bytes.NewReader(imageTar(t, map[string]string{db: "P:libcrypto3\nV:3.5.6-r0\n\n"})), "test")
+		if err == nil || !strings.Contains(err.Error(), "could not determine OS") {
+			t.Errorf("%s: expected an unknown OS error, got %v", db, err)
+		}
+	}
+}
+
+func TestScanFSScratchImage(t *testing.T) {
+	pkgs, label, err := scanFS(bytes.NewReader(imageTar(t, map[string]string{"ojo": "static binary"})), "test")
+	if err != nil {
+		t.Fatalf("a scratch image has no OS packages to scope and must not be refused, got %v", err)
+	}
+	if len(pkgs) != 0 || label != "no OS" {
+		t.Errorf("pkgs = %+v, label = %q", pkgs, label)
+	}
+
+	pkgs, _, err = scanFS(bytes.NewReader(imageTar(t, map[string]string{"app/node_modules/x/package.json": `{"name":"x","version":"1.0.0"}`})), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pkgs) != 1 || pkgs[0].Name != "x" || pkgs[0].Ecosystem != model.EcosystemNpm {
+		t.Errorf("expected the npm package to still be reported, got %+v", pkgs)
 	}
 }
 

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -57,6 +58,29 @@ func TestImageCmd_NoPackagesFound(t *testing.T) {
 	}
 	if !strings.Contains(out, "No packages found") {
 		t.Errorf("got %q", out)
+	}
+}
+
+func TestImageCmd_NoPackagesStillEmitsMachineFormats(t *testing.T) {
+	for format, want := range map[string]string{
+		"json":  `"target"`,
+		"sarif": `"$schema"`,
+		"sbom":  `"bomFormat"`,
+		"vex":   `"@context"`,
+	} {
+		stubImageScan(t, nil, "no OS", nil)
+		stubOSVScan(t, nil, nil)
+		cmd := imageCmd()
+		var stdout, stderr bytes.Buffer
+		cmd.SetOut(&stdout)
+		cmd.SetErr(&stderr)
+		cmd.SetArgs([]string{"-f", format, "scratch:latest"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("%s: expected no error, got %v", format, err)
+		}
+		if !json.Valid(stdout.Bytes()) || !strings.Contains(stdout.String(), want) {
+			t.Errorf("%s: expected a well-formed empty document on stdout, got %q", format, stdout.String())
+		}
 	}
 }
 

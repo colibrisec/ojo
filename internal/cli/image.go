@@ -45,7 +45,10 @@ func imageCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if len(pkgs) == 0 {
+			// Machine-readable formats fall through and emit an empty but
+			// well-formed document -- a plain-text line on stdout would
+			// break anything parsing it (e.g. a SARIF upload).
+			if len(pkgs) == 0 && !isMachineFormat(format) {
 				fmt.Fprintln(cmd.OutOrStdout(), "No packages found.")
 				return nil
 			}
@@ -116,4 +119,12 @@ func imageCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&sarifOmitSuppressed, "sarif-omit-suppressed", false, "omit results suppressed by .ojoignore or a VEX file from -f sarif output instead of marking them suppressed; for consumers such as GitHub code scanning that ignore SARIF suppressions")
 	cmd.Flags().StringVar(&vexFile, "vex-file", "", "path to an OpenVEX document; suppresses findings its not_affected/fixed statements cover (matched by product purl and CVE/alias)")
 	return cmd
+}
+
+func isMachineFormat(format string) bool {
+	switch format {
+	case "json", "sarif", "sbom", "vex":
+		return true
+	}
+	return false
 }

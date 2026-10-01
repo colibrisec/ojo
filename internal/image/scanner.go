@@ -28,7 +28,13 @@ func scanFS(r io.Reader, ref string) ([]model.Package, string, error) {
 	info := parseOSRelease(files.osRelease)
 	eco := osEcosystem(info)
 	if eco == "" {
-		return nil, "", fmt.Errorf("could not determine OS/version for %s (no os-release found); cannot safely scope an OSV query", ref)
+		if files.apkDB != nil || files.dpkgStatus != nil {
+			return nil, "", fmt.Errorf("could not determine OS/version for %s (no os-release found); cannot safely scope an OSV query", ref)
+		}
+		// No os-release and no OS package database: a scratch-style image
+		// (e.g. a single static binary). There are no OS packages to scope,
+		// and npm packages carry their own ecosystem.
+		return dedupeNpm(files.npm), "no OS", nil
 	}
 	osLabel := strings.TrimSpace(info["ID"] + " " + info["VERSION_ID"])
 
