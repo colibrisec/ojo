@@ -94,3 +94,31 @@ func TestGitLabReports(t *testing.T) {
 		}
 	})
 }
+
+// GitLab requires every vulnerability id in a report to be unique, so the
+// same vulnerable package in two files needs two ids.
+func TestGitLabDependencyScanningSamePackageInTwoFiles(t *testing.T) {
+	vulns := []model.Vulnerability{{ID: "CVE-2024-1", Summary: "bad", Severity: "HIGH"}}
+	r := Report{Findings: []model.Finding{
+		{Package: model.Package{Name: "requests", Version: "2.19.0", Source: "requirements.txt"}, Vulns: vulns},
+		{Package: model.Package{Name: "requests", Version: "2.19.0", Source: "uv.lock"}, Vulns: vulns},
+	}}
+	var buf bytes.Buffer
+	if err := r.GitLabDependencyScanning(&buf, "", "v1.2.3"); err != nil {
+		t.Fatal(err)
+	}
+	var rep glDepReport
+	if err := json.Unmarshal(buf.Bytes(), &rep); err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Vulnerabilities) != 2 {
+		t.Fatalf("want 2 vulnerabilities, got %d", len(rep.Vulnerabilities))
+	}
+	a, b := rep.Vulnerabilities[0], rep.Vulnerabilities[1]
+	if a.Location.File != "requirements.txt" || b.Location.File != "uv.lock" {
+		t.Errorf("locations: %q, %q", a.Location.File, b.Location.File)
+	}
+	if a.ID == b.ID {
+		t.Errorf("both entries share id %q", a.ID)
+	}
+}

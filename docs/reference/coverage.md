@@ -29,7 +29,8 @@ What ojo can actually scan today.
 | RHEL / UBI (7, 8, 9, 10) | rpm | ✅ |
 | Rocky Linux | rpm | ✅ |
 | AlmaLinux | rpm | ✅ |
-| Fedora / CentOS / Amazon Linux / Oracle Linux / SUSE / other rpm-based | rpm | ⚠️ Packages are read (`-f sbom` works), but OSV publishes no advisories ojo can match for these, so a vulnerability scan is refused with a clear error rather than reporting a misleading zero |
+| Amazon Linux (2, 2023) | rpm | ✅ Checked against Amazon's own advisories, core repository only |
+| Fedora / CentOS / Oracle Linux / SUSE / Amazon Linux 1 / other rpm-based | rpm | ⚠️ Packages are read (`-f sbom` works), but ojo has no advisories it can match for these, so a vulnerability scan is refused with a clear error rather than reporting a misleading zero |
 
 `ojo image` also reports vulnerable Node.js packages installed in the image, found through `node_modules/<package>/package.json` (including the npm bundled with Node.js base images). Other language runtimes are not scanned inside images yet. A `scratch`-style image with no OS at all is scanned for Node.js packages only. Images are pulled as `linux/amd64` unless `--platform` says otherwise.
 
@@ -86,6 +87,6 @@ Same six languages as the SAST scanner, all four AST metrics (complexity/length/
 
 ## Vulnerability data source
 
-[OSV.dev](https://osv.dev) only, queried live (no local database). This means OS package coverage is exactly whatever OSV itself aggregates from those distros' security trackers. `--kev` additionally pulls CISA's Known Exploited Vulnerabilities catalog (cached locally for a day) to annotate findings.
+[OSV.dev](https://osv.dev), queried live (no local database). This means OS package coverage is exactly whatever OSV itself aggregates from those distros' security trackers. The one exception is Amazon Linux, which OSV doesn't cover: its packages are checked against the advisory feed in Amazon's own package repository, also fetched live. `--kev` additionally pulls CISA's Known Exploited Vulnerabilities catalog (cached locally for a day) to annotate findings.
 
 Two other services are queried, each for one purpose: [deps.dev](https://deps.dev) for package licenses in SBOM output (skippable with `--no-license-lookup`), and the CocoaPods spec CDN to resolve pods from a `Podfile.lock`.

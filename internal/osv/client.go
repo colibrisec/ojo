@@ -90,16 +90,25 @@ func Scan(ctx context.Context, pkgs []model.Package) ([]model.Finding, error) {
 		return nil, nil
 	}
 
+	// A package found in several files is asked about once; every copy
+	// gets the answer.
 	var queries []batchQuery
-	var owner []int // queries[i] was asked on behalf of pkgs[owner[i]]
+	var owners [][]int // queries[i] was asked on behalf of each pkgs[owners[i][...]]
+	asked := map[batchQuery]int{}
 	for i, p := range pkgs {
 		for _, t := range queryTargets(p) {
 			var q batchQuery
 			q.Package.Name = t.name
 			q.Package.Ecosystem = t.ecosystem
 			q.Version = p.Version
-			queries = append(queries, q)
-			owner = append(owner, i)
+			qi, ok := asked[q]
+			if !ok {
+				qi = len(queries)
+				asked[q] = qi
+				queries = append(queries, q)
+				owners = append(owners, nil)
+			}
+			owners[qi] = append(owners[qi], i)
 		}
 	}
 
@@ -112,13 +121,14 @@ func Scan(ctx context.Context, pkgs []model.Package) ([]model.Finding, error) {
 			return nil, fmt.Errorf("osv querybatch: %w", err)
 		}
 		for i, r := range result.Results {
-			if start+i >= len(owner) {
+			if start+i >= len(owners) {
 				break
 			}
-			pkg := owner[start+i]
-			for _, v := range r.Vulns {
-				if !slices.Contains(vulnIDs[pkg], v.ID) {
-					vulnIDs[pkg] = append(vulnIDs[pkg], v.ID)
+			for _, pkg := range owners[start+i] {
+				for _, v := range r.Vulns {
+					if !slices.Contains(vulnIDs[pkg], v.ID) {
+						vulnIDs[pkg] = append(vulnIDs[pkg], v.ID)
+					}
 				}
 			}
 		}

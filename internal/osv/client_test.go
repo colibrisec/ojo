@@ -3,6 +3,7 @@ package osv
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -59,7 +60,7 @@ func TestScanChunksLargeBatches(t *testing.T) {
 
 	var pkgs []model.Package
 	for i := 0; i < maxBatchSize+1; i++ {
-		pkgs = append(pkgs, model.Package{Name: "pkg", Version: "1.0.0", Ecosystem: model.EcosystemNpm})
+		pkgs = append(pkgs, model.Package{Name: fmt.Sprintf("pkg-%d", i), Version: "1.0.0", Ecosystem: model.EcosystemNpm})
 	}
 
 	if _, err := Scan(context.Background(), pkgs); err != nil {
@@ -218,5 +219,47 @@ func TestScanMergesResultsAcrossTargets(t *testing.T) {
 	}
 	if got := findings[0].Vulns[0].FixedVersion; got != "1:3.0.7-28.el9" {
 		t.Errorf("FixedVersion = %q", got)
+	}
+}
+
+// The same package in two files is one question to OSV, and the answer goes
+// to both: each file is a place the vulnerable version is pinned.
+func TestScanReportsSamePackageFromEachSource(t *testing.T) {
+	var queries int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/querybatch") {
+			var req batchRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Error(err)
+			}
+			queries += len(req.Queries)
+			w.Write([]byte(`{"results":[{"vulns":[{"id":"GHSA-1"}]}]}`))
+			return
+		}
+		w.Write([]byte(`{"id":"GHSA-1","summary":"bad","aliases":["CVE-2024-1"]}`))
+	}))
+	defer srv.Close()
+	old := apiBase
+	apiBase = srv.URL
+	defer func() { apiBase = old }()
+
+	pkgs := []model.Package{
+		{Name: "requests", Version: "2.19.0", Ecosystem: model.EcosystemPyPI, Source: "requirements.txt"},
+		{Name: "requests", Version: "2.19.0", Ecosystem: model.EcosystemPyPI, Source: "uv.lock"},
+	}
+	findings, err := Scan(context.Background(), pkgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queries != 1 {
+		t.Errorf("sent %d queries, want the duplicate package asked about once", queries)
+	}
+	if len(findings) != 2 {
+		t.Fatalf("got %d findings, want one per source: %+v", len(findings), findings)
+	}
+	for i, want := range []string{"requirements.txt", "uv.lock"} {
+		if findings[i].Package.Source != want || len(findings[i].Vulns) != 1 || findings[i].Vulns[0].ID != "CVE-2024-1" {
+			t.Errorf("finding %d = %+v, want CVE-2024-1 in %s", i, findings[i], want)
+		}
 	}
 }

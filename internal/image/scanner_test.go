@@ -105,6 +105,9 @@ func TestOSEcosystem(t *testing.T) {
 		{map[string]string{"ID": "rhel", "VERSION_ID": "9.4"}, "Red Hat:enterprise_linux:9"},
 		{map[string]string{"ID": "rhel", "VERSION_ID": "10.1"}, "Red Hat:enterprise_linux:10.1"},
 		{map[string]string{"ID": "fedora", "VERSION_ID": "42"}, "fedora"},
+		{map[string]string{"ID": "amzn", "VERSION_ID": "2"}, "Amazon Linux:2"},
+		{map[string]string{"ID": "amzn", "VERSION_ID": "2023"}, "Amazon Linux:2023"},
+		{map[string]string{"ID": "amzn", "VERSION_ID": "2018.03"}, "amzn"}, // Amazon Linux 1: end of life, no advisory feed
 	}
 	for _, c := range cases {
 		if got := string(osEcosystem(c.info)); got != c.want {

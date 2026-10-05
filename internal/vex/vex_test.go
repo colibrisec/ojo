@@ -172,3 +172,18 @@ func TestApply_MatchesByIdentifiersPURL(t *testing.T) {
 		t.Errorf("expected identifiers.purl match to suppress, kept=%+v suppressed=%+v", kept, suppressed)
 	}
 }
+
+// A package found in several files is one product: one statement per
+// vulnerability, not one per file.
+func TestGenerate_OneStatementPerProduct(t *testing.T) {
+	vulns := []model.Vulnerability{{ID: "CVE-2024-1"}}
+	findings := []model.Finding{
+		{Package: model.Package{Name: "foo", Version: "1.0", Ecosystem: model.EcosystemNpm, Source: "package-lock.json"}, Vulns: vulns},
+		{Package: model.Package{Name: "foo", Version: "1.0", Ecosystem: model.EcosystemNpm, Source: "yarn.lock"}, Vulns: vulns},
+		{Package: model.Package{Name: "foo", Version: "2.0", Ecosystem: model.EcosystemNpm, Source: "yarn.lock"}, Vulns: vulns},
+	}
+	doc := Generate(findings, "ojo test", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	if len(doc.Statements) != 2 {
+		t.Fatalf("expected a statement for foo@1.0 and one for foo@2.0, got %+v", doc.Statements)
+	}
+}

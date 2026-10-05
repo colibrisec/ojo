@@ -6,9 +6,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/colibrisec/ojo/internal/alas"
 	"github.com/colibrisec/ojo/internal/config"
 	"github.com/colibrisec/ojo/internal/ignore"
 	"github.com/colibrisec/ojo/internal/image"
+	"github.com/colibrisec/ojo/internal/model"
 	"github.com/colibrisec/ojo/internal/report"
 	"github.com/colibrisec/ojo/internal/vex"
 )
@@ -60,13 +62,12 @@ func imageCmd() *cobra.Command {
 			}
 
 			if distro := image.WithoutAdvisories(pkgs); distro != "" {
-				return fmt.Errorf("%s: OSV publishes no advisories for %q, so its OS packages can't be checked for vulnerabilities (-f sbom still lists them)", ref, distro)
+				return fmt.Errorf("%s: ojo has no advisories for %q, so its OS packages can't be checked for vulnerabilities (-f sbom still lists them)", ref, distro)
 			}
 
-			fmt.Fprintln(cmd.ErrOrStderr(), "Querying OSV for known vulnerabilities...")
-			findings, err := osvScan(cmd.Context(), pkgs)
+			findings, err := imageVulns(cmd, pkgs)
 			if err != nil {
-				return fmt.Errorf("querying OSV: %w", err)
+				return err
 			}
 			if kevFlag {
 				if err := annotateKEV(cmd, findings); err != nil {
@@ -126,6 +127,39 @@ func imageCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&noLicenseLookup, "no-license-lookup", false, noLicenseLookupUsage)
 	cmd.Flags().StringVar(&vexFile, "vex-file", "", "path to an OpenVEX document; suppresses findings its not_affected/fixed statements cover (matched by product purl and CVE/alias)")
 	return cmd
+}
+
+// imageVulns checks an image's packages against the advisories that cover
+// each: Amazon's own for Amazon Linux packages, OSV for everything else
+// (including the Node.js packages of an Amazon Linux image).
+func imageVulns(cmd *cobra.Command, pkgs []model.Package) ([]model.Finding, error) {
+	var amazon, rest []model.Package
+	for _, p := range pkgs {
+		if alas.Covers(p) {
+			amazon = append(amazon, p)
+		} else {
+			rest = append(rest, p)
+		}
+	}
+
+	var findings []model.Finding
+	if len(amazon) > 0 {
+		fmt.Fprintln(cmd.ErrOrStderr(), "Checking Amazon Linux security advisories...")
+		found, err := alasScan(cmd.Context(), amazon)
+		if err != nil {
+			return nil, fmt.Errorf("checking Amazon Linux advisories: %w", err)
+		}
+		findings = found
+	}
+	if len(rest) > 0 {
+		fmt.Fprintln(cmd.ErrOrStderr(), "Querying OSV for known vulnerabilities...")
+		found, err := osvScan(cmd.Context(), rest)
+		if err != nil {
+			return nil, fmt.Errorf("querying OSV: %w", err)
+		}
+		findings = append(findings, found...)
+	}
+	return findings, nil
 }
 
 func isMachineFormat(format string) bool {
