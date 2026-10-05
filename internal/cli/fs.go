@@ -236,7 +236,7 @@ func fsCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, sbom, sarif, vex")
 	cmd.Flags().StringVar(&scanners, "scanners", "vuln", "comma-separated scanners to run: vuln, secret, misconfig, sast, quality")
 	cmd.Flags().StringVar(&configPath, "config", "", "path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)")
-	cmd.Flags().BoolVarP(&gitlab, "gitlab", "g", false, "write GitLab-compatible security reports (gl-dependency-scanning-report.json, gl-sast-report.json, gl-secret-detection-report.json, gl-sbom-report.cdx.json) instead of -f/--format output; runs all scanners")
+	cmd.Flags().BoolVarP(&gitlab, "gitlab", "g", false, "write GitLab-compatible security reports (gl-dependency-scanning-report.json, gl-sast-report.json, gl-secret-detection-report.json, gl-sbom-report.cdx.json) instead of -f/--format output; runs the vuln, secret, misconfig, and sast scanners")
 	cmd.Flags().StringVar(&rulesDir, "rules-dir", "", "directory of custom *.yaml SAST rules (default: <path>/.ojo/rules, if present); runs alongside --scanners sast")
 	cmd.Flags().StringVar(&ignoreFile, "ignore-file", "", "path to a .ojoignore file (default: .ojoignore in the current directory, if present)")
 	cmd.Flags().StringVar(&cyclonedxVersion, "cyclonedx-version", "", "CycloneDX spec version for -f sbom output, e.g. 1.4 (default: latest)")

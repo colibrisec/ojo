@@ -7,7 +7,7 @@ ojo is a security scanner for dependencies, secrets, misconfig, and code.
 Scanners (--scanners, comma-separated, ojo fs only):
   vuln       known CVEs in dependency manifests (default)
   secret     hardcoded credentials, API keys, tokens
-  misconfig  Dockerfile / Kubernetes / Terraform misconfiguration
+  misconfig  Dockerfile / Kubernetes / Terraform / CloudFormation / MCP / skill / APK misconfiguration
   sast       source-level issues (Go, Python, JS/TS, PHP, Ruby, Java)
   quality    maintainability smells: complexity, length, nesting, params, duplication
 
@@ -16,6 +16,7 @@ Output formats (-f/--format, both commands):
   json       machine-readable
   sbom       CycloneDX SBOM of discovered packages, skips vulnerability scanning
   sarif      SARIF 2.1.0, for GitHub code scanning and similar tooling
+  vex        OpenVEX document for the vulnerability findings
 
 Usage:
   ojo [command]
@@ -28,19 +29,23 @@ Examples:
   ojo image python:3.14-slim
 
 Available Commands:
+  completion  Generate the autocompletion script for the specified shell
   fs          Scan a filesystem path for vulnerabilities, secrets, and misconfiguration
+  help        Help about any command
   image       Scan a container image for vulnerable OS and Node.js packages
 
 Flags:
   -h, --help      help for ojo
   -v, --version   version for ojo
+
+Use "ojo [command] --help" for more information about a command.
 ```
 
 ## `ojo --version`
 
 ```console
 $ ojo --version
-ojo version v0.1.0
+ojo version v0.2.2
 ```
 
 Set at build time via `-ldflags -X .../internal/cli.Version=...` — every published binary/package/image reports the release tag it was built from. Building from source without that flag reports `dev`.
@@ -55,7 +60,8 @@ Flags:
       --config string              path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)
       --cyclonedx-version string   CycloneDX spec version for -f sbom output, e.g. 1.4 (default: latest)
   -f, --format string              output format: table, json, sbom, sarif, vex (default "table")
-  -g, --gitlab                     write GitLab-compatible security reports instead of -f/--format output; runs all scanners
+  -g, --gitlab                     write GitLab-compatible security reports (gl-dependency-scanning-report.json, gl-sast-report.json, gl-secret-detection-report.json, gl-sbom-report.cdx.json) instead of -f/--format output; runs the vuln, secret, misconfig, and sast scanners
+  -h, --help                       help for fs
       --ignore-file string         path to a .ojoignore file (default: .ojoignore in the current directory, if present)
       --kev                        flag findings whose CVE is in CISA's Known Exploited Vulnerabilities catalog (confirmed real-world exploitation); annotation only, doesn't affect exit code
       --respect-gitignore          skip untracked files that git ignores (e.g. build output, coverage reports); no effect outside a git repository
@@ -68,6 +74,10 @@ Flags:
 ```
 
 `path` defaults to `.` (the current directory) if omitted.
+
+### `--cyclonedx-version`
+
+Selects the CycloneDX spec version for `-f sbom` output (and `-g`'s `gl-sbom-report.cdx.json`): `1.2` through `1.7`, default `1.7`. Anything else is an error. Works on both `ojo fs` and `ojo image`. See [SBOM](../guide/sbom.md).
 
 ### `--scanners quality`
 
@@ -121,7 +131,7 @@ Writes four report files to the current directory instead of printing `-f/--form
 - `gl-secret-detection-report.json` — `secret` scanner issues
 - `gl-sbom-report.cdx.json` — CycloneDX SBOM of discovered packages
 
-`-g` runs all four scanners regardless of `--scanners`. Wire the files up as `artifacts:reports:` entries in `.gitlab-ci.yml` (`dependency_scanning`, `sast`, `secret_detection`, `cyclonedx`) so GitLab ingests them into the Security Dashboard.
+`-g` runs the `vuln`, `secret`, `misconfig`, and `sast` scanners regardless of `--scanners` (`quality` isn't included — see above). `.ojoignore` and `--vex-file` suppressions apply to the reports, and `--cyclonedx-version` to the SBOM. Wire the files up as `artifacts:reports:` entries in `.gitlab-ci.yml` (`dependency_scanning`, `sast`, `secret_detection`, `cyclonedx`) so GitLab ingests them into the Security Dashboard.
 
 ## `ojo image`
 
@@ -133,6 +143,7 @@ Flags:
       --config string              path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)
       --cyclonedx-version string   CycloneDX spec version for -f sbom output, e.g. 1.4 (default: latest)
   -f, --format string              output format: table, json, sbom, sarif, vex (default "table")
+  -h, --help                       help for image
       --ignore-file string         path to a .ojoignore file (default: .ojoignore in the current directory, if present)
       --kev                        flag findings whose CVE is in CISA's Known Exploited Vulnerabilities catalog (confirmed real-world exploitation); annotation only, doesn't affect exit code
       --platform string            image platform to pull as os/arch, e.g. linux/arm64 (default: linux/amd64)
@@ -141,6 +152,12 @@ Flags:
 ```
 
 `ref` is required — any reference `docker pull` would accept (`nginx:1.25`, `myregistry.example.com/app:latest`, `python@sha256:...`).
+
+`--kev`, `--vex-file`/`-f vex`, `--ignore-file`, `--cyclonedx-version`, and `--sarif-omit-suppressed` behave as described under [`ojo fs`](#ojo-fs).
+
+### `--platform`
+
+Pulls the given `os/arch` platform of a multi-arch image, e.g. `--platform linux/arm64`. Default: `linux/amd64`.
 
 ## Config file
 

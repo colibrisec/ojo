@@ -4,7 +4,7 @@
 
 It scans:
 
-- **Filesystems and source repos** (`ojo fs`) — dependency manifests across ten ecosystems, hardcoded secrets, Dockerfile/Kubernetes/Terraform misconfiguration, and source-level SAST across Go, Python, JavaScript/TypeScript, PHP, Ruby, and Java
+- **Filesystems and source repos** (`ojo fs`) — dependency manifests across ten ecosystems, hardcoded secrets, misconfiguration (Dockerfile, Kubernetes, Terraform, CloudFormation, MCP server configs, skill definitions, Android APK manifests), and source-level SAST and code-quality checks across Go, Python, JavaScript/TypeScript, PHP, Ruby, and Java
 - **Container images** (`ojo image`) — installed OS packages (apk/dpkg) and Node.js packages against known vulnerabilities
 
 Vulnerability data comes from [OSV.dev](https://osv.dev), the same aggregated advisory database (GitHub Security Advisories, PyPA, RustSec, Debian/Alpine security trackers, and more) that underpins most modern scanners.
@@ -34,10 +34,11 @@ Most scanners either reimplement vulnerability databases from scratch (unrealist
 
 | Scanner | What it finds | Default |
 |---|---|---|
-| [Vulnerability](guide/scanner/vulnerability.md) | Known CVEs in dependency manifests and OS packages | On |
+| [Vulnerability](guide/scanner/vulnerability.md) | Known CVEs in dependency manifests, and in OS and Node.js packages inside container images | On |
 | [Secret](guide/scanner/secret.md) | Hardcoded credentials, API keys, tokens, private keys | Off (`--scanners secret`) |
-| [Misconfiguration](guide/scanner/misconfiguration.md) | Dockerfile / Kubernetes / Terraform security misconfigurations | Off (`--scanners misconfig`) |
+| [Misconfiguration](guide/scanner/misconfiguration.md) | Security misconfigurations in Dockerfiles, Kubernetes, Terraform, CloudFormation, MCP server configs, skill definitions, and Android APK manifests | Off (`--scanners misconfig`) |
 | [SAST](guide/scanner/sast.md) | Injection, weak crypto, and other source-level issues across Go, Python, JS/TS, PHP, Ruby, and Java | Off (`--scanners sast`) |
+| [Code Quality](guide/scanner/quality.md) | Maintainability smells: complexity, length, nesting, parameter count, duplicate code, TODO/FIXME comments | Off (`--scanners quality`) |
 
 ## Getting started
 

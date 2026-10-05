@@ -4,9 +4,9 @@
 $ ojo fs [path]
 ```
 
-Scans a directory (default `.`) for dependency manifests, secrets, misconfiguration, and source-level SAST issues (Go, Python, JS/TS, PHP, Ruby, Java). Which scanners run is controlled by [`--scanners`](../configuration.md).
+Scans a directory (default `.`) for dependency manifests, secrets, misconfiguration, and source-level SAST and code-quality issues (Go, Python, JS/TS, PHP, Ruby, Java). Which scanners run is controlled by [`--scanners`](../configuration.md).
 
-`node_modules/`, `.git/`, and `vendor/` are always skipped.
+`node_modules/`, `.git/`, and `vendor/` are always skipped. Pass `--respect-gitignore` to also skip untracked files that git ignores (build output, coverage reports), so a local scan matches what CI sees in a fresh checkout — see the [CLI Reference](../../reference/cli.md#-respect-gitignore).
 
 ## Dependency discovery
 
@@ -25,12 +25,14 @@ ojo walks the tree and parses every recognized manifest/lockfile it finds:
 | Java / Maven | `pom.xml`, `gradle.lockfile` | `gradle.lockfile` is Gradle's opt-in dependency-locking output — fully resolved. `pom.xml` is **not** a lockfile: property placeholders (`${spring.version}`) are resolved against that same file's `<properties>` block only; anything requiring parent-POM inheritance or a `<dependencyManagement>` section elsewhere is silently skipped rather than guessed at. |
 | Swift / SwiftURL | `Package.resolved` | Fully-resolved lockfile (both the pre-Xcode-13 v1 shape and the v2/v3 shape). Branch/revision-pinned dependencies with no tagged version are skipped — OSV's SwiftURL ecosystem matches by SemVer tag. **CocoaPods (`Podfile.lock`) is not supported: OSV has no CocoaPods ecosystem at all**, so there's nowhere to send a query regardless of parsing effort. |
 
+Lockfiles from other package managers in these ecosystems aren't read yet: `uv.lock` and `pdm.lock` (PyPI), `yarn.lock` and `pnpm-lock.yaml` (npm). A project that only has one of those produces no findings for that ecosystem rather than an error.
+
 There is no unlocked-manifest support (`package.json` without a lockfile, `build.gradle`/`build.gradle.kts` DSL parsing) — ojo only reads already-resolved dependency data. See [Roadmap & Limitations](../../roadmap.md).
 
 ## Example
 
 ```console
-$ ojo fs --scanners vuln,secret,misconfig,sast ./my-project
+$ ojo fs --scanners vuln,secret,misconfig,sast,quality ./my-project
 ```
 
 ## See also
@@ -39,3 +41,4 @@ $ ojo fs --scanners vuln,secret,misconfig,sast ./my-project
 - [Secret scanner](../scanner/secret.md)
 - [Misconfiguration scanner](../scanner/misconfiguration.md)
 - [SAST scanner](../scanner/sast.md)
+- [Code Quality scanner](../scanner/quality.md)

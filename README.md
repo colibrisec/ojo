@@ -21,12 +21,13 @@ $ brew tap colibrisec/tap && brew install colibrisec/tap/ojo      # macOS
 $ sudo apt install ./ojo_X.Y.Z_linux_amd64.deb                    # Debian/Ubuntu
 $ sudo dnf install ojo_X.Y.Z_linux_amd64.rpm                      # Fedora/RHEL
 $ sudo snap install ojo-scanner                                   # Linux (Snap; command is ojo-scanner)
+$ yay -S ojo-bin                                                  # Arch Linux (AUR; or `ojo` to build from source)
 $ winget install colibrisec.ojo                                   # Windows
 $ docker run --rm ghcr.io/colibrisec/ojo:latest fs --help         # Container
 $ go install github.com/colibrisec/ojo@latest                     # go install
 ```
 
-Prebuilt binaries (Linux/macOS/Windows, amd64+arm64) and checksums are on the [Releases page](https://github.com/colibrisec/ojo/releases). Full install instructions, including MSI/deb/rpm download URLs and Snap confinement caveats, are in [`docs/getting-started/installation.md`](docs/getting-started/installation.md).
+Prebuilt binaries (Linux/macOS/Windows, amd64+arm64) and checksums are on the [Releases page](https://github.com/colibrisec/ojo/releases). Full install instructions, including MSI/deb/rpm download URLs, AUR packages, and Snap confinement caveats, are in [`docs/getting-started/installation.md`](docs/getting-started/installation.md).
 
 ## Documentation
 
@@ -41,16 +42,17 @@ $ mkdocs serve
 
 | Scanner | What it finds | Runs by default |
 |---|---|---|
-| Vulnerability | Known CVEs in dependency manifests (ten ecosystems, see [Coverage](docs/reference/coverage.md)) and container OS packages (Alpine, Debian, Ubuntu), via [OSV.dev](https://osv.dev) | ✅ |
+| Vulnerability | Known CVEs in dependency manifests (ten ecosystems, see [Coverage](docs/reference/coverage.md)) plus OS packages (Alpine, Debian, Ubuntu) and Node.js packages in container images, via [OSV.dev](https://osv.dev) | ✅ |
 | Secret | Hardcoded credentials, API keys, tokens, private keys | Opt-in (`--scanners secret`) |
-| Misconfiguration | Dockerfile / Kubernetes / Terraform security misconfigurations | Opt-in (`--scanners misconfig`) |
+| Misconfiguration | Security misconfigurations in Dockerfiles, Kubernetes manifests, Terraform (AWS/Azure/GCP), CloudFormation, MCP server configs, Claude Code skill definitions, and Android APK manifests | Opt-in (`--scanners misconfig`) |
 | SAST | Injection, weak crypto, and other source-level issues in Go (`go/ast`-based), Python, JavaScript/TypeScript, PHP, Ruby, and Java (tree-sitter-based) | Opt-in (`--scanners sast`) |
+| Code quality | Maintainability smells: complexity, function length, nesting depth, parameter count, duplicate code, TODO/FIXME comments | Opt-in (`--scanners quality`) |
 
-Every command also supports `-f sbom` for a CycloneDX SBOM.
+Output is a table by default; `-f json`, `-f sarif`, `-f sbom` (CycloneDX), and `-f vex` (OpenVEX) are available on every command, and `ojo fs -g` writes GitLab security reports. Findings can be suppressed with a `.ojoignore` file or an OpenVEX document (`--vex-file`), and flagged against CISA's Known Exploited Vulnerabilities catalog with `--kev`.
 
 ## Building from source
 
-Requires Go 1.22+.
+Requires Go 1.26.5+.
 
 ```console
 $ git clone https://github.com/colibrisec/ojo.git && cd ojo

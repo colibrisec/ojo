@@ -49,24 +49,25 @@ $ ojo fs --ignore-file ci/.ojoignore .
 
 A missing default `.ojoignore` is not an error. An explicit `--ignore-file path` that doesn't exist, or a malformed line, is.
 
-**Suppressed results are omitted from `table`/`json`/`sbom`/GitLab output entirely** — they don't count toward the exit code either. `-f sarif` is the exception: suppressed results stay in the output as native SARIF `suppressions` (`kind: external`, your reason as `justification`), so tools that understand SARIF suppressions can still show them as accepted rather than hiding the audit trail. GitHub code scanning does **not** use SARIF suppressions, so suppressed results stay open as alerts in the Security tab; pass `--sarif-omit-suppressed` when uploading to GitHub to leave them out of the SARIF (their alerts then close on the next scan).
+**Suppressed results are omitted from `table`/`json`/`vex`/GitLab output entirely** — they don't count toward the exit code either. `-f sarif` is the exception: suppressed results stay in the output as native SARIF `suppressions` (`kind: external`, your reason as `justification`), so tools that understand SARIF suppressions can still show them as accepted rather than hiding the audit trail. GitHub code scanning does **not** use SARIF suppressions, so suppressed results stay open as alerts in the Security tab; pass `--sarif-omit-suppressed` when uploading to GitHub to leave them out of the SARIF (their alerts then close on the next scan).
 
 ## `--scanners`
 
 `ojo fs` only. Comma-separated list of scanners to run.
 
 ```console
-$ ojo fs --scanners vuln,secret,misconfig,sast .
+$ ojo fs --scanners vuln,secret,misconfig,sast,quality .
 ```
 
-| Value | Runs by default? |
-|---|---|
-| `vuln` | ✅ |
-| `secret` | ❌ |
-| `misconfig` | ❌ |
-| `sast` | ❌ |
+| Value | Scanner | Runs by default? |
+|---|---|---|
+| `vuln` | [Vulnerability](scanner/vulnerability.md) | ✅ |
+| `secret` | [Secret](scanner/secret.md) | ❌ |
+| `misconfig` | [Misconfiguration](scanner/misconfiguration.md) | ❌ |
+| `sast` | [SAST](scanner/sast.md) | ❌ |
+| `quality` | [Code Quality](scanner/quality.md) | ❌ |
 
-Default: `vuln`. `ojo image` doesn't take `--scanners` — it always runs the vulnerability scanner against OS packages.
+Default: `vuln`. An unknown value is an error. `-g`/`--gitlab` overrides this and runs `vuln,secret,misconfig,sast`. `ojo image` doesn't take `--scanners` — it always runs the vulnerability scanner against the image's OS and Node.js packages.
 
 ## `-f` / `--format`
 
@@ -76,8 +77,9 @@ Both commands.
 |---|---|
 | `table` (default) | Box-drawn human-readable table |
 | `json` | Machine-readable, for piping into other tools |
-| `sbom` | CycloneDX 1.7 SBOM (see [SBOM](sbom.md)) — skips vulnerability scanning entirely |
+| `sbom` | CycloneDX SBOM, spec 1.7 unless `--cyclonedx-version` says otherwise (see [SBOM](sbom.md)) — skips vulnerability scanning entirely |
 | `sarif` | [SARIF](https://docs.oasis-open.org/sarif/sarif/v2.1.0/) 2.1.0, for `github/codeql-action/upload-sarif` and similar tooling (validated against the official schema) |
+| `vex` | [OpenVEX](https://openvex.dev) document for the vulnerability findings (see [CLI Reference: VEX](../reference/cli.md#vex-f-vex-vex-file)) |
 
 ```console
 $ ojo fs -f sarif . > results.sarif
@@ -91,6 +93,10 @@ A minimal example CI step to surface findings in GitHub's Security tab:
   with:
     sarif_file: results.sarif
 ```
+
+`secret`, `misconfig`, and built-in `sast` issues carry their CWE IDs where one applies: appended to the rule in `table` output, a `cwes` array in `json`, a `cwe` result property (and the rule's help link) in `sarif`, and `cwe` identifiers in the GitLab reports. Custom SAST rules and `quality` issues have none.
+
+Progress lines (`Running vuln scan...`, `Pulling and scanning image layers...`) go to stderr, so redirecting stdout to a file captures only the report.
 
 ## Color
 
