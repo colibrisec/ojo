@@ -193,3 +193,14 @@ func TestParseApkReadsLicense(t *testing.T) {
 		t.Error("license leaked from the previous package")
 	}
 }
+
+func TestWithoutAdvisoriesAmazonLinux(t *testing.T) {
+	covered := []model.Package{{Name: "openssl-libs", Ecosystem: "Amazon Linux:2023", Source: "rpm"}}
+	if got := WithoutAdvisories(covered); got != "" {
+		t.Errorf("Amazon Linux 2023 has advisories, got %q", got)
+	}
+	al1 := []model.Package{{Name: "openssl", Ecosystem: osEcosystem(map[string]string{"ID": "amzn", "VERSION_ID": "2018.03"}), Source: "rpm"}}
+	if got := WithoutAdvisories(al1); got != "amzn" {
+		t.Errorf("WithoutAdvisories = %q, want amzn for Amazon Linux 1", got)
+	}
+}

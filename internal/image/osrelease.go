@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/colibrisec/ojo/internal/alas"
 	"github.com/colibrisec/ojo/internal/model"
 )
 
@@ -52,11 +53,15 @@ func osEcosystem(info map[string]string) model.Ecosystem {
 			return model.Ecosystem("Red Hat:enterprise_linux:" + major)
 		}
 		return model.Ecosystem("Red Hat:enterprise_linux:" + version)
-	default:
-		// Not a distribution ojo can form an OSV ecosystem for; see
-		// WithoutAdvisories.
-		return model.Ecosystem(id)
+	case "amzn":
+		// Not an OSV ecosystem: Amazon Linux is checked against Amazon's
+		// own advisories instead (internal/alas).
+		if eco, ok := alas.Ecosystem(version); ok {
+			return eco
+		}
 	}
+	// Not a distribution ojo has advisories for; see WithoutAdvisories.
+	return model.Ecosystem(id)
 }
 
 func majorVersion(version string) string {

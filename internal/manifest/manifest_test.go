@@ -38,24 +38,26 @@ func TestDiscover(t *testing.T) {
 	}
 }
 
-func TestDiscoverDedupesAcrossManifests(t *testing.T) {
+func TestDiscoverKeepsSamePackageFromEachManifest(t *testing.T) {
 	dir := t.TempDir()
-	// Same package+version, same ecosystem, reported by two different lockfiles.
-	write(t, dir, "requirements.txt", "requests==2.28.1\n")
-	write(t, dir, "poetry.lock", "[[package]]\nname = \"requests\"\nversion = \"2.28.1\"\n")
+	// Same package+version, same ecosystem, in two different files: each is
+	// a location to report, so neither may be dropped.
+	write(t, dir, "requirements.txt", "requests==2.28.1\nrequests==2.28.1\n")
+	write(t, dir, "uv.lock", "version = 1\n\n[[package]]\nname = \"requests\"\nversion = \"2.28.1\"\n")
 
 	pkgs, err := Discover(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	count := 0
+	sources := map[string]int{}
 	for _, p := range pkgs {
 		if p.Name == "requests" && p.Version == "2.28.1" {
-			count++
+			sources[filepath.Base(p.Source)]++
 		}
 	}
-	if count != 1 {
-		t.Errorf("expected requests@2.28.1 to be deduped to 1 entry across requirements.txt+poetry.lock, got %d: %+v", count, pkgs)
+	// Once per file -- a repeat within one file is still a duplicate.
+	if len(sources) != 2 || sources["requirements.txt"] != 1 || sources["uv.lock"] != 1 {
+		t.Errorf("expected requests@2.28.1 once from each of requirements.txt and uv.lock, got %v: %+v", sources, pkgs)
 	}
 }
 

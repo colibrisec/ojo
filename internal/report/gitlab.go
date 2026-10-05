@@ -200,7 +200,9 @@ func (r Report) GitLabDependencyScanning(w io.Writer, root, toolVersion string) 
 	for _, f := range r.Findings {
 		file := filepath.ToSlash(relPath(root, f.Package.Source))
 		for _, v := range f.Vulns {
-			id := fingerprint("dependency_scanning", f.Package.Name, f.Package.Version, v.ID)
+			// The file is part of the identity: the same vulnerable package
+			// in two files is two entries, and GitLab requires unique ids.
+			id := fingerprint("dependency_scanning", file, f.Package.Name, f.Package.Version, v.ID)
 			solution := ""
 			if v.FixedVersion != "" {
 				solution = "Upgrade to " + v.FixedVersion

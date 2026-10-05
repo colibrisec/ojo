@@ -59,9 +59,17 @@ type product struct {
 // status ojo can honestly emit on its own.
 func Generate(findings []model.Finding, author string, now time.Time) Document {
 	doc := Document{Context: contextURL, Author: author, Timestamp: now.UTC().Format(time.RFC3339), Version: 1}
+	// One statement per vulnerability and product: a package found in
+	// several files is still one product.
+	type stated struct{ vuln, purl string }
+	seen := map[stated]bool{}
 	for _, f := range findings {
 		p := product{ID: report.Purl(f.Package)}
 		for _, v := range f.Vulns {
+			if seen[stated{v.ID, p.ID}] {
+				continue
+			}
+			seen[stated{v.ID, p.ID}] = true
 			doc.Statements = append(doc.Statements, Statement{
 				Vulnerability: vulnerability{Name: v.ID},
 				Products:      []product{p},

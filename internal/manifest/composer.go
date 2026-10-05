@@ -3,6 +3,7 @@ package manifest
 import (
 	"encoding/json"
 	"os"
+	"strings"
 
 	"github.com/colibrisec/ojo/internal/model"
 )
@@ -17,8 +18,9 @@ type composerLockFile struct {
 }
 
 type composerPackage struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
+	Name    string   `json:"name"`
+	Version string   `json:"version"`
+	License []string `json:"license"`
 }
 
 func (composerLockParser) Parse(path string) ([]model.Package, error) {
@@ -38,9 +40,31 @@ func (composerLockParser) Parse(path string) ([]model.Package, error) {
 		}
 		pkgs = append(pkgs, model.Package{
 			Name: p.Name, Version: trimVersionPrefix(p.Version), Ecosystem: model.EcosystemPackagist, Source: path,
+			License: composerLicense(p.License),
 		})
 	}
 	return pkgs, nil
+}
+
+// composerLicense turns a lockfile's license list into one SPDX expression.
+// Composer records SPDX identifiers, and more than one means the package is
+// offered under any of them -- a choice, so "OR".
+func composerLicense(licenses []string) string {
+	var parts []string
+	for _, l := range licenses {
+		if l = strings.TrimSpace(l); l == "" {
+			continue
+		}
+		parts = append(parts, l)
+	}
+	if len(parts) > 1 {
+		for i, l := range parts {
+			if strings.Contains(l, " ") {
+				parts[i] = "(" + l + ")"
+			}
+		}
+	}
+	return strings.Join(parts, " OR ")
 }
 
 func trimVersionPrefix(v string) string {

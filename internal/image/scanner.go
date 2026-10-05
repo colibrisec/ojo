@@ -77,13 +77,13 @@ type imageFiles struct {
 // packages (as opposed to Node.js ones, whose Source is a path).
 var osPackageSources = map[string]bool{"apk": true, "dpkg": true, "rpm": true}
 
-// advisoryEcosystems are the OSV ecosystem prefixes ojo knows how to form
-// for an image's OS packages.
-var advisoryEcosystems = []string{"Alpine:", "Debian:", "Ubuntu:", "Rocky Linux:", "AlmaLinux:", "Red Hat:"}
+// advisoryEcosystems are the ecosystem prefixes of the image OS packages ojo
+// has advisories for: OSV's, plus Amazon Linux through internal/alas.
+var advisoryEcosystems = []string{"Alpine:", "Debian:", "Ubuntu:", "Rocky Linux:", "AlmaLinux:", "Red Hat:", "Amazon Linux:"}
 
 // WithoutAdvisories returns the distribution ID of pkgs' OS packages if it
-// is one OSV publishes no advisories for (Fedora, CentOS, Amazon Linux,
-// Oracle Linux, SUSE, ...), or "" if they can be checked. Such packages can
+// is one ojo has no advisories for (Fedora, CentOS, Oracle Linux, SUSE,
+// Amazon Linux 1, ...), or "" if they can be checked. Such packages can
 // still be listed in an SBOM, but a vulnerability scan of them would report
 // nothing at all -- which must not be mistaken for a clean result.
 func WithoutAdvisories(pkgs []model.Package) string {

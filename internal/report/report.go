@@ -16,13 +16,37 @@ import (
 
 const titleWrapWidth = 60
 
+// Table prints one vulnerability table per file the affected packages were
+// found in, each under that file's path, so a package pinned in two places
+// (requirements.txt and uv.lock, say) shows up as two things to fix.
 func Table(w io.Writer, root string, findings []model.Finding) {
-	_ = root
 	if len(findings) == 0 {
 		fmt.Fprintln(w, "No vulnerabilities found.")
 		return
 	}
 
+	var sources []string
+	bySource := map[string][]model.Finding{}
+	for _, f := range findings {
+		src := relPath(root, f.Package.Source)
+		if _, ok := bySource[src]; !ok {
+			sources = append(sources, src)
+		}
+		bySource[src] = append(bySource[src], f)
+	}
+	for i, src := range sources {
+		if i > 0 {
+			fmt.Fprintln(w)
+		}
+		if src != "" {
+			fmt.Fprintln(w, src)
+			fmt.Fprintln(w, strings.Repeat("-", len([]rune(src))))
+		}
+		vulnTable(w, bySource[src])
+	}
+}
+
+func vulnTable(w io.Writer, findings []model.Finding) {
 	type vulnRow struct {
 		pkg  model.Package
 		vuln model.Vulnerability
@@ -213,10 +237,22 @@ func ParseCycloneDXVersion(s string) (cdx.SpecVersion, error) {
 	return v, nil
 }
 
+// SBOM writes pkgs as a CycloneDX document, one component per distinct
+// package: a package found in several files is the same component, not
+// several.
 func SBOM(w io.Writer, pkgs []model.Package, version cdx.SpecVersion) error {
 	bom := cdx.NewBOM()
 	components := make([]cdx.Component, 0, len(pkgs))
+	index := map[model.Package]int{}
 	for _, p := range pkgs {
+		key := model.Package{Name: p.Name, Version: p.Version, Ecosystem: p.Ecosystem}
+		if i, ok := index[key]; ok {
+			if components[i].Licenses == nil {
+				components[i].Licenses = sbomLicenses(p.License)
+			}
+			continue
+		}
+		index[key] = len(components)
 		components = append(components, cdx.Component{
 			Type:       cdx.ComponentTypeLibrary,
 			Name:       p.Name,

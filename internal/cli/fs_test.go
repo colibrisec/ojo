@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -417,5 +418,37 @@ func TestFsCmd_SARIFOmitSuppressed(t *testing.T) {
 	}
 	if strings.Contains(out, "aws-access-key-id") || strings.Contains(out, `"suppressions"`) {
 		t.Errorf("with --sarif-omit-suppressed the suppressed result must be dropped, got %q", out)
+	}
+}
+
+// A package pinned in two files is reported in both, not just the first one
+// read.
+func TestFsCmd_SamePackageInTwoFilesReportsBoth(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "requirements.txt"), []byte("requests==2.19.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	uvLock := "version = 1\n\n[[package]]\nname = \"requests\"\nversion = \"2.19.0\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "uv.lock"), []byte(uvLock), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := osvScan
+	osvScan = func(ctx context.Context, pkgs []model.Package) ([]model.Finding, error) {
+		var findings []model.Finding
+		for _, p := range pkgs {
+			findings = append(findings, model.Finding{Package: p, Vulns: []model.Vulnerability{{ID: "CVE-2018-18074", Severity: "HIGH"}}})
+		}
+		return findings, nil
+	}
+	t.Cleanup(func() { osvScan = old })
+
+	out, err := run(t, dir, "-f", "sarif")
+	if !errors.Is(err, ErrFindingsFound) {
+		t.Fatalf("expected ErrFindingsFound, got %v", err)
+	}
+	for _, want := range []string{`"uri": "requirements.txt"`, `"uri": "uv.lock"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected a result located in %s, got %s", want, out)
+		}
 	}
 }

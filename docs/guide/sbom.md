@@ -36,13 +36,14 @@ Where the license comes from:
 | Packages | Source |
 |---|---|
 | npm (`package-lock.json` v2/v3), Node.js packages in images | The `license` field recorded locally |
+| Packagist (`composer.lock`) | The `license` field recorded in the lockfile; several licenses there are a choice, written as an SPDX `OR` expression |
 | Alpine (apk), rpm-based images | The license field of the package database |
 | Debian/Ubuntu (dpkg) | Each package's `/usr/share/doc/<package>/copyright` file, when it's in Debian's machine-readable format |
 | Go, npm, PyPI, Maven, NuGet, crates.io, RubyGems | [deps.dev](https://deps.dev) (Google's Open Source Insights), looked up by package and version |
 | CocoaPods | The pod's podspec, from the CocoaPods spec CDN |
-| Packagist, Pub, SwiftURL | Not available — no license is recorded |
+| Pub, SwiftURL | Not available — no license is recorded |
 
-The last three rows of lookups need network access, and send package names and versions to those services. Pass `--no-license-lookup` to skip them and include only locally recorded licenses:
+The deps.dev and CocoaPods lookups need network access, and send package names and versions to those services. Pass `--no-license-lookup` to skip them and include only locally recorded licenses:
 
 ```console
 $ ojo fs -f sbom --no-license-lookup . > sbom.json

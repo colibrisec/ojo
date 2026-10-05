@@ -45,8 +45,10 @@ func Discover(root string) ([]model.Package, error) {
 					continue // ponytail: skip unparsable manifest, don't fail the whole scan
 				}
 				for _, pkg := range found {
+					// Deduped per file only: the same package in two files
+					// (requirements.txt and uv.lock, or two lockfiles in a
+					// monorepo) is two places to fix, and each is reported.
 					dedupeKey := pkg
-					dedupeKey.Source = "" // same package via a different file is still a duplicate
 					dedupeKey.License = ""
 					if seen[dedupeKey] {
 						continue

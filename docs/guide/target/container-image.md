@@ -4,7 +4,7 @@
 $ ojo image [ref]
 ```
 
-Pulls an image reference (from any registry `docker pull` could reach — no Docker daemon required), reads its installed OS package database and any Node.js packages in it, and checks those packages against [OSV.dev](https://osv.dev).
+Pulls an image reference (from any registry `docker pull` could reach — no Docker daemon required), reads its installed OS package database and any Node.js packages in it, and checks those packages against [OSV.dev](https://osv.dev) — or, for Amazon Linux, against Amazon's own security advisories.
 
 Only the **vulnerability** scanner runs against images today; `--scanners` doesn't apply to `ojo image` (see [Roadmap](../../roadmap.md)).
 
@@ -15,7 +15,8 @@ Only the **vulnerability** scanner runs against images today; `--scanners` doesn
 | apk | Alpine | ✅ Supported (`lib/apk/db/installed`) |
 | dpkg | Debian, Ubuntu | ✅ Supported (`var/lib/dpkg/status`) |
 | rpm | RHEL / UBI, Rocky Linux, AlmaLinux | ✅ Supported (`var/lib/rpm` or `usr/lib/sysimage/rpm`; Berkeley DB, NDB, and SQLite backends, read with [go-rpmdb](https://github.com/knqyf263/go-rpmdb)) |
-| rpm | Fedora, CentOS, Amazon Linux, Oracle Linux, SUSE, others | ⚠️ Packages are read, so `-f sbom` works. A vulnerability scan is refused: OSV publishes no advisories ojo can match for these distributions, and reporting zero findings would look like a clean result. |
+| rpm | Amazon Linux 2, Amazon Linux 2023 | ✅ Supported, checked against [Amazon Linux Security Center](https://alas.aws.amazon.com) advisories rather than OSV — see [Amazon Linux](#amazon-linux) |
+| rpm | Fedora, CentOS, Oracle Linux, SUSE, Amazon Linux 1, others | ⚠️ Packages are read, so `-f sbom` works. A vulnerability scan is refused: ojo has no advisories it can match for these distributions, and reporting zero findings would look like a clean result. |
 
 ### rpm specifics
 
@@ -24,9 +25,21 @@ Only the **vulnerability** scanner runs against images today; `--scanners` doesn
 - **AlmaLinux** advisories carry no CVE alias or severity in OSV, so findings show the `ALSA-…` ID and `UNKNOWN` severity.
 - Modular streams (`dnf module`) aren't distinguished: a package is matched by name and version only.
 
+### Amazon Linux
+
+OSV publishes nothing for Amazon Linux, so its packages are checked against the advisories Amazon ships with the distribution: the `updateinfo` of the release's core repository, the same data `dnf updateinfo` reads. It's downloaded from `cdn.amazonlinux.com` on every scan (about 2 MB), with no local database.
+
+- A package is vulnerable when an advisory lists a newer version of it than the one installed, compared with rpm's own version ordering. Matching is by **binary package name**, which is how Amazon's advisories list packages.
+- Each CVE an advisory covers is one finding, with the `ALAS…` advisory as an alias and the advisory page as its link. Severity is Amazon's advisory priority (`Important` is shown as `HIGH`), which applies to the advisory as a whole rather than to each CVE in it.
+- Only the **core** repository is covered. Packages installed from Amazon Linux 2 *extras* topics or from third-party repositories aren't checked.
+- An advisory only exists once Amazon has released a fix, so a CVE that is still unfixed in Amazon Linux isn't reported.
+- **Amazon Linux 1** (2018.03) is end of life and isn't covered; a vulnerability scan of it is refused.
+
+If the advisories can't be downloaded, the scan fails rather than report nothing.
+
 ## Node.js packages
 
-Alongside OS packages, ojo reports Node.js packages installed anywhere in the image, found through `node_modules/<package>/package.json` (scoped packages included, and the npm bundled with Node.js base images). They're queried against OSV's npm ecosystem. Other language runtimes aren't scanned inside images yet.
+Alongside OS packages, ojo reports Node.js packages installed anywhere in the image, found through `node_modules/<package>/package.json` (scoped packages included, and the npm bundled with Node.js base images). They're queried against OSV's npm ecosystem, whatever the image's OS. Other language runtimes aren't scanned inside images yet.
 
 ## Platform
 

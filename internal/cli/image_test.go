@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -286,5 +287,52 @@ func TestImageCmd_SARIFOmitSuppressed(t *testing.T) {
 	}
 	if strings.Contains(out, "CVE-2024-1") || strings.Contains(out, `"suppressions"`) {
 		t.Errorf("with --sarif-omit-suppressed the suppressed result must be dropped, got %q", out)
+	}
+}
+
+// Amazon Linux packages are checked against Amazon's advisories; OSV, which
+// has none for them, only sees the rest of the image.
+func TestImageCmd_AmazonLinuxUsesAmazonAdvisories(t *testing.T) {
+	rpm := model.Package{Name: "openssl-libs", Version: "1:3.0.8-1.amzn2023.0.1", Ecosystem: "Amazon Linux:2023", Source: "rpm"}
+	npm := model.Package{Name: "tar", Version: "7.5.11", Ecosystem: model.EcosystemNpm, Source: "usr/lib/node_modules/tar/package.json"}
+	stubImageScan(t, []model.Package{rpm, npm}, "amzn 2023", nil)
+
+	var alasPkgs, osvPkgs []model.Package
+	stubALASScan(t, &alasPkgs, []model.Finding{{
+		Package: rpm,
+		Vulns:   []model.Vulnerability{{ID: "CVE-2024-1", Severity: "HIGH", Aliases: []string{"ALAS2023-2024-1"}}},
+	}}, nil)
+	old := osvScan
+	osvScan = func(ctx context.Context, pkgs []model.Package) ([]model.Finding, error) {
+		osvPkgs = pkgs
+		return []model.Finding{{Package: npm, Vulns: []model.Vulnerability{{ID: "CVE-2024-2", Severity: "LOW"}}}}, nil
+	}
+	t.Cleanup(func() { osvScan = old })
+
+	out, err := runImage(t, "amazonlinux:2023")
+	if !errors.Is(err, ErrFindingsFound) {
+		t.Fatalf("expected ErrFindingsFound, got %v", err)
+	}
+	if len(alasPkgs) != 1 || alasPkgs[0].Name != "openssl-libs" {
+		t.Errorf("Amazon advisories were asked about %+v, want only the rpm", alasPkgs)
+	}
+	if len(osvPkgs) != 1 || osvPkgs[0].Name != "tar" {
+		t.Errorf("OSV was asked about %+v, want only the npm package", osvPkgs)
+	}
+	for _, want := range []string{"CVE-2024-1", "CVE-2024-2", "Checking Amazon Linux security advisories..."} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected output to contain %q, got %q", want, out)
+		}
+	}
+}
+
+// An unreachable advisory feed must fail the scan, not pass as clean.
+func TestImageCmd_AmazonAdvisoryErrorPropagates(t *testing.T) {
+	stubImageScan(t, []model.Package{{Name: "bash", Version: "5.2.15-1.amzn2023.0.2", Ecosystem: "Amazon Linux:2023", Source: "rpm"}}, "amzn 2023", nil)
+	var got []model.Package
+	stubALASScan(t, &got, nil, errors.New("feed down"))
+	_, err := runImage(t, "amazonlinux:2023")
+	if err == nil || !strings.Contains(err.Error(), "feed down") {
+		t.Errorf("expected the advisory error to propagate, got %v", err)
 	}
 }

@@ -97,3 +97,32 @@ func TestSBOMLicenses(t *testing.T) {
 		t.Errorf("purl = %q", c[4].Purl)
 	}
 }
+
+// A package found in several files is one component.
+func TestSBOMListsPackageOncePerVersion(t *testing.T) {
+	pkgs := []model.Package{
+		{Name: "requests", Version: "2.19.0", Ecosystem: model.EcosystemPyPI, Source: "requirements.txt"},
+		{Name: "requests", Version: "2.19.0", Ecosystem: model.EcosystemPyPI, Source: "uv.lock", License: "Apache-2.0"},
+		{Name: "requests", Version: "2.31.0", Ecosystem: model.EcosystemPyPI, Source: "sub/uv.lock"},
+	}
+	version, _ := ParseCycloneDXVersion("")
+	var buf bytes.Buffer
+	if err := SBOM(&buf, pkgs, version); err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Components []struct {
+			Version  string `json:"version"`
+			Licenses []any  `json:"licenses"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Components) != 2 || doc.Components[0].Version != "2.19.0" || doc.Components[1].Version != "2.31.0" {
+		t.Fatalf("expected one component per version, got %+v", doc.Components)
+	}
+	if len(doc.Components[0].Licenses) != 1 {
+		t.Errorf("expected the license known from either copy to be kept, got %+v", doc.Components[0].Licenses)
+	}
+}

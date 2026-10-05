@@ -66,3 +66,15 @@ func stubKevLoad(t *testing.T, set kev.Set, stale bool, err error) {
 	}
 	t.Cleanup(func() { kevLoad = old })
 }
+
+// stubALASScan replaces the Amazon Linux advisory lookup, recording the
+// packages it was asked about in *got.
+func stubALASScan(t *testing.T, got *[]model.Package, findings []model.Finding, err error) {
+	t.Helper()
+	old := alasScan
+	alasScan = func(ctx context.Context, pkgs []model.Package) ([]model.Finding, error) {
+		*got = pkgs
+		return findings, err
+	}
+	t.Cleanup(func() { alasScan = old })
+}

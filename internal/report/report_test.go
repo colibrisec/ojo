@@ -113,3 +113,28 @@ func TestPrintTotalLineOrderAndCounts(t *testing.T) {
 		t.Errorf("expected ascending severity order LOW < HIGH < CRITICAL in: %s", got)
 	}
 }
+
+func TestTableGroupsBySourceFile(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "repo")
+	vulns := []model.Vulnerability{{ID: "CVE-2024-1", Severity: "HIGH"}}
+	findings := []model.Finding{
+		{Package: model.Package{Name: "requests", Version: "2.19.0", Source: filepath.Join(root, "requirements.txt")}, Vulns: vulns},
+		{Package: model.Package{Name: "requests", Version: "2.19.0", Source: filepath.Join(root, "uv.lock")}, Vulns: vulns},
+	}
+
+	var buf bytes.Buffer
+	Table(&buf, root, findings)
+	got := buf.String()
+
+	// One table per file, each under the file's path relative to the root.
+	req, uv := strings.Index(got, "requirements.txt\n"), strings.Index(got, "uv.lock\n")
+	if req < 0 || uv < req {
+		t.Fatalf("expected a requirements.txt section then a uv.lock section, got:\n%s", got)
+	}
+	if n := strings.Count(got, "CVE-2024-1"); n != 2 {
+		t.Errorf("expected the vulnerability under both files, got %d rows:\n%s", n, got)
+	}
+	if strings.Contains(got, root) {
+		t.Errorf("expected paths relative to the scan root, got:\n%s", got)
+	}
+}
