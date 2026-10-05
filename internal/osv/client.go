@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 
@@ -44,46 +45,101 @@ type batchResult struct {
 	Results []batchResultEntry `json:"results"`
 }
 
+// target is one (name, ecosystem) pair to ask OSV about. Most packages have
+// exactly one; see queryTargets for the ones that don't.
+type target struct {
+	name, ecosystem string
+}
+
+// rhelRepos are the OSV ecosystem suffixes a RHEL major version's advisories
+// are filed under. An installed rpm doesn't record which repository it came
+// from, so each package is checked against all of them.
+var rhelRepos = map[string][]string{
+	"7": {"::server"},
+	"8": {"::baseos", "::appstream"},
+	"9": {"::baseos", "::appstream"},
+}
+
+const rhelEcosystemPrefix = "Red Hat:enterprise_linux:"
+
+// queryTargets returns what to query OSV for to cover p.
+func queryTargets(p model.Package) []target {
+	eco := string(p.Ecosystem)
+	switch {
+	case p.Ecosystem == model.EcosystemCocoaPods:
+		// OSV has no CocoaPods ecosystem; Swift advisories are filed against
+		// the git repository, which internal/cocoapods resolves into Origin.
+		if p.Origin == "" {
+			return nil
+		}
+		return []target{{p.Origin, string(model.EcosystemSwiftURL)}}
+	case strings.HasPrefix(eco, rhelEcosystemPrefix):
+		if repos, ok := rhelRepos[strings.TrimPrefix(eco, rhelEcosystemPrefix)]; ok {
+			targets := make([]target, len(repos))
+			for i, repo := range repos {
+				targets[i] = target{p.QueryName(), eco + repo}
+			}
+			return targets
+		}
+	}
+	return []target{{p.QueryName(), eco}}
+}
+
 func Scan(ctx context.Context, pkgs []model.Package) ([]model.Finding, error) {
 	if len(pkgs) == 0 {
 		return nil, nil
 	}
 
-	var results []batchResultEntry
-	for start := 0; start < len(pkgs); start += maxBatchSize {
-		end := min(start+maxBatchSize, len(pkgs))
-		chunk := pkgs[start:end]
-
-		req := batchRequest{Queries: make([]batchQuery, len(chunk))}
-		for i, p := range chunk {
-			req.Queries[i].Package.Name = p.QueryName()
-			req.Queries[i].Package.Ecosystem = string(p.Ecosystem)
-			req.Queries[i].Version = p.Version
+	var queries []batchQuery
+	var owner []int // queries[i] was asked on behalf of pkgs[owner[i]]
+	for i, p := range pkgs {
+		for _, t := range queryTargets(p) {
+			var q batchQuery
+			q.Package.Name = t.name
+			q.Package.Ecosystem = t.ecosystem
+			q.Version = p.Version
+			queries = append(queries, q)
+			owner = append(owner, i)
 		}
+	}
+
+	vulnIDs := make([][]string, len(pkgs))
+	for start := 0; start < len(queries); start += maxBatchSize {
+		end := min(start+maxBatchSize, len(queries))
 
 		var result batchResult
-		if err := post(ctx, apiBase+"/querybatch", req, &result); err != nil {
+		if err := post(ctx, apiBase+"/querybatch", batchRequest{Queries: queries[start:end]}, &result); err != nil {
 			return nil, fmt.Errorf("osv querybatch: %w", err)
 		}
-		results = append(results, result.Results...)
+		for i, r := range result.Results {
+			if start+i >= len(owner) {
+				break
+			}
+			pkg := owner[start+i]
+			for _, v := range r.Vulns {
+				if !slices.Contains(vulnIDs[pkg], v.ID) {
+					vulnIDs[pkg] = append(vulnIDs[pkg], v.ID)
+				}
+			}
+		}
 	}
 
 	idSet := map[string]struct{}{}
-	for _, r := range results {
-		for _, v := range r.Vulns {
-			idSet[v.ID] = struct{}{}
+	for _, ids := range vulnIDs {
+		for _, id := range ids {
+			idSet[id] = struct{}{}
 		}
 	}
 	details := fetchDetails(ctx, idSet)
 
 	var findings []model.Finding
-	for i, r := range results {
-		if len(r.Vulns) == 0 {
+	for i, ids := range vulnIDs {
+		if len(ids) == 0 {
 			continue
 		}
 		f := model.Finding{Package: pkgs[i]}
-		for _, v := range r.Vulns {
-			if d, ok := details[v.ID]; ok {
+		for _, id := range ids {
+			if d, ok := details[id]; ok {
 				f.Vulns = append(f.Vulns, toVulnerability(d, pkgs[i]))
 			}
 		}

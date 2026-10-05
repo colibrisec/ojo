@@ -15,6 +15,7 @@ func (npmLockParser) Match(name string) bool { return name == "package-lock.json
 type npmLockFile struct {
 	Packages map[string]struct {
 		Version string `json:"version"`
+		License string `json:"license"`
 	} `json:"packages"` // npm lockfile v2/v3
 	Dependencies map[string]struct {
 		Version string `json:"version"`
@@ -43,7 +44,7 @@ func (npmLockParser) Parse(path string) ([]model.Package, error) {
 			}
 			name := key[idx+len("node_modules/"):]
 			pkgs = append(pkgs, model.Package{
-				Name: name, Version: p.Version, Ecosystem: model.EcosystemNpm, Source: path,
+				Name: name, Version: p.Version, Ecosystem: model.EcosystemNpm, Source: path, License: p.License,
 			})
 		}
 		return pkgs, nil

@@ -14,7 +14,15 @@ Only the **vulnerability** scanner runs against images today; `--scanners` doesn
 |---|---|---|
 | apk | Alpine | ✅ Supported (`lib/apk/db/installed`) |
 | dpkg | Debian, Ubuntu | ✅ Supported (`var/lib/dpkg/status`) |
-| rpm | RHEL, CentOS, Fedora, Amazon Linux, Rocky, AlmaLinux | ❌ Not supported — `ojo image` errors out with a clear message rather than silently returning zero packages. rpm databases (Berkeley DB/SQLite/NDB depending on version) need a real parser like [go-rpmdb](https://github.com/knqyf263/go-rpmdb); this hasn't been wired in yet. |
+| rpm | RHEL / UBI, Rocky Linux, AlmaLinux | ✅ Supported (`var/lib/rpm` or `usr/lib/sysimage/rpm`; Berkeley DB, NDB, and SQLite backends, read with [go-rpmdb](https://github.com/knqyf263/go-rpmdb)) |
+| rpm | Fedora, CentOS, Amazon Linux, Oracle Linux, SUSE, others | ⚠️ Packages are read, so `-f sbom` works. A vulnerability scan is refused: OSV publishes no advisories ojo can match for these distributions, and reporting zero findings would look like a clean result. |
+
+### rpm specifics
+
+- Advisories are matched by **source package** (`openssl`, not `openssl-libs`), taken from each package's `SOURCERPM`, and reported against the installed binary package.
+- **RHEL 7–9** advisories are filed per repository. An installed rpm doesn't record which repository it came from, so each package is checked against BaseOS and AppStream (RHEL 7: Server). Packages installed from other repositories (CRB, EPEL, third-party) aren't covered. **RHEL 10** is matched by minor version.
+- **AlmaLinux** advisories carry no CVE alias or severity in OSV, so findings show the `ALSA-…` ID and `UNKNOWN` severity.
+- Modular streams (`dnf module`) aren't distinguished: a package is matched by name and version only.
 
 ## Node.js packages
 
@@ -32,7 +40,7 @@ $ ojo image --platform linux/arm64 python:3.14-slim
 
 ojo reads `/etc/os-release` to determine the ecosystem string it sends to OSV (`Alpine:v3.18`, `Debian:13`, `Ubuntu:22.04:LTS`, ...). On some images `/etc/os-release` is a symlink to `/usr/lib/os-release` — ojo follows that correctly. If the OS/version can't be determined, the scan is refused outright rather than sending OSV an unscoped query (an unscoped ecosystem causes OSV to loosely match package *names* across unrelated ecosystems — this was a real bug caught while building ojo, not a hypothetical).
 
-The exception is an image with no `os-release` *and* no apk/dpkg database — a `scratch`-style image holding just a static binary. There are no OS packages to scope, so the scan proceeds (Node.js packages are still reported) instead of being refused.
+The exception is an image with no `os-release` *and* no apk/dpkg/rpm database — a `scratch`-style image holding just a static binary. There are no OS packages to scope, so the scan proceeds (Node.js packages are still reported) instead of being refused.
 
 With `-f json`, `sarif`, `sbom`, or `vex`, an image with no packages still produces an empty, well-formed document rather than the plain-text `No packages found.` line.
 
@@ -40,7 +48,7 @@ With `-f json`, `sarif`, `sbom`, or `vex`, an image with no packages still produ
 
 `ojo image` shares `-f`/`--format`, `--config`, `--ignore-file`, `--vex-file`, `--kev`, `--cyclonedx-version`, and `--sarif-omit-suppressed` with `ojo fs` — see the [CLI Reference](../../reference/cli.md#ojo-image).
 
-In a `.ojoignore` entry, the path an image finding is matched against is `apk` or `dpkg` for OS packages (so `*` works as the glob), and the package's `package.json` path inside the image for Node.js packages (e.g. `usr/local/lib/node_modules/npm/package.json` — `*` doesn't cross `/`, so spell out the segments).
+In a `.ojoignore` entry, the path an image finding is matched against is `apk`, `dpkg`, or `rpm` for OS packages (so `*` works as the glob), and the package's `package.json` path inside the image for Node.js packages (e.g. `usr/local/lib/node_modules/npm/package.json` — `*` doesn't cross `/`, so spell out the segments).
 
 ## Example
 

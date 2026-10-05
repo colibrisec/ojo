@@ -8,6 +8,7 @@ import (
 
 	"github.com/colibrisec/ojo/internal/config"
 	"github.com/colibrisec/ojo/internal/ignore"
+	"github.com/colibrisec/ojo/internal/image"
 	"github.com/colibrisec/ojo/internal/report"
 	"github.com/colibrisec/ojo/internal/vex"
 )
@@ -21,6 +22,7 @@ func imageCmd() *cobra.Command {
 	var kevFlag bool
 	var vexFile string
 	var sarifOmitSuppressed bool
+	var noLicenseLookup bool
 
 	cmd := &cobra.Command{
 		Use:   "image [ref]",
@@ -54,7 +56,11 @@ func imageCmd() *cobra.Command {
 			}
 
 			if format == "sbom" {
-				return report.SBOM(cmd.OutOrStdout(), pkgs, sbomVersion)
+				return report.SBOM(cmd.OutOrStdout(), withLicenses(cmd, pkgs, noLicenseLookup), sbomVersion)
+			}
+
+			if distro := image.WithoutAdvisories(pkgs); distro != "" {
+				return fmt.Errorf("%s: OSV publishes no advisories for %q, so its OS packages can't be checked for vulnerabilities (-f sbom still lists them)", ref, distro)
 			}
 
 			fmt.Fprintln(cmd.ErrOrStderr(), "Querying OSV for known vulnerabilities...")
@@ -117,6 +123,7 @@ func imageCmd() *cobra.Command {
 	cmd.Flags().StringVar(&cyclonedxVersion, "cyclonedx-version", "", "CycloneDX spec version for -f sbom output, e.g. 1.4 (default: latest)")
 	cmd.Flags().BoolVar(&kevFlag, "kev", false, "flag findings whose CVE is in CISA's Known Exploited Vulnerabilities catalog (confirmed real-world exploitation); annotation only, doesn't affect exit code")
 	cmd.Flags().BoolVar(&sarifOmitSuppressed, "sarif-omit-suppressed", false, "omit results suppressed by .ojoignore or a VEX file from -f sarif output instead of marking them suppressed; for consumers such as GitHub code scanning that ignore SARIF suppressions")
+	cmd.Flags().BoolVar(&noLicenseLookup, "no-license-lookup", false, noLicenseLookupUsage)
 	cmd.Flags().StringVar(&vexFile, "vex-file", "", "path to an OpenVEX document; suppresses findings its not_affected/fixed statements cover (matched by product purl and CVE/alias)")
 	return cmd
 }

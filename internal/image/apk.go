@@ -9,13 +9,13 @@ import (
 
 func parseApk(data []byte, ecosystem model.Ecosystem) []model.Package {
 	var pkgs []model.Package
-	var name, version, origin string
+	var name, version, origin, license string
 
 	flush := func() {
 		if name != "" && version != "" {
-			pkgs = append(pkgs, model.Package{Name: name, Version: version, Origin: origin, Ecosystem: ecosystem, Source: "apk"})
+			pkgs = append(pkgs, model.Package{Name: name, Version: version, Origin: origin, Ecosystem: ecosystem, Source: "apk", License: license})
 		}
-		name, version, origin = "", "", ""
+		name, version, origin, license = "", "", "", ""
 	}
 
 	scanner := bufio.NewScanner(bytes.NewReader(data))
@@ -35,6 +35,8 @@ func parseApk(data []byte, ecosystem model.Ecosystem) []model.Package {
 			version = line[2:]
 		case 'o':
 			origin = line[2:]
+		case 'L':
+			license = line[2:]
 		}
 	}
 	flush()

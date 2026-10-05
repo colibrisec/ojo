@@ -60,7 +60,7 @@ OSV ecosystem strings below are **verified against the live API** with a known-v
 
 **Explicitly out of scope, not just deferred:**
 - `build.gradle`/`build.gradle.kts` (Groovy/Kotlin DSL, not data — meaningfully harder than any of the above; `gradle.lockfile` above covers the same ecosystem without this cost).
-- **CocoaPods (`Podfile.lock`)** — checked OSV's schema directly: there is no CocoaPods ecosystem defined at all. Not a parsing-effort problem; there's nowhere to send the query regardless of how well `Podfile.lock` gets parsed. Only revisit if OSV adds one.
+- ~~**CocoaPods (`Podfile.lock`)**~~ — ✅ shipped after all. OSV still has no CocoaPods ecosystem, but its SwiftURL advisories are keyed by git repository, and a pod's podspec (public CocoaPods spec CDN) names the repository it's built from — see `internal/cocoapods`.
 - **Scala/sbt (`build.sbt`)** — no dedicated Scala ecosystem either, but not needed: Scala libraries publish under Maven coordinates (e.g. `com.typesafe.akka:akka-http_2.13`), so the existing `Maven` ecosystem support already covers them correctly (verified live). The actual blocker is identical to Gradle's: `build.sbt` is a Scala program, not data. The opt-in [`sbt-dependency-lock`](https://github.com/stringbean/sbt-dependency-lock) plugin generates a JSON lockfile that would sidestep this the same way `gradle.lockfile` does — worth adding as its own small item *if* that plugin's adoption is common enough to matter; it's meaningfully less standard than Gradle's built-in locking, so verify real-world usage before investing.
 
 ### Ignorefile / risk acceptance (`.ojoignore`) — ✅ shipped

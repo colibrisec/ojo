@@ -17,6 +17,12 @@ const (
 	EcosystemCratesIO  Ecosystem = "crates.io"
 	EcosystemRubyGems  Ecosystem = "RubyGems"
 	EcosystemSwiftURL  Ecosystem = "SwiftURL"
+
+	// EcosystemCocoaPods is not an OSV ecosystem -- OSV has no CocoaPods
+	// advisories of its own. internal/osv queries a pod under SwiftURL
+	// using the git repository internal/cocoapods resolved into Origin, and
+	// skips a pod that has none.
+	EcosystemCocoaPods Ecosystem = "CocoaPods"
 )
 
 type Package struct {
@@ -25,6 +31,11 @@ type Package struct {
 	Ecosystem Ecosystem
 	Source    string // manifest file it was found in
 	Origin    string
+
+	// License is the declared license, as an SPDX ID/expression where the
+	// source provides one and a free-form name otherwise. Only populated
+	// for SBOM output (see internal/license); "" means unknown.
+	License string `json:",omitempty"`
 }
 
 func (p Package) QueryName() string {

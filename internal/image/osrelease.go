@@ -23,20 +23,6 @@ func parseOSRelease(data []byte) map[string]string {
 	return info
 }
 
-var rpmDistros = map[string]bool{"rhel": true, "centos": true, "fedora": true, "amzn": true, "rocky": true, "almalinux": true}
-
-func isRPMBased(info map[string]string) bool {
-	if rpmDistros[info["ID"]] {
-		return true
-	}
-	for _, like := range strings.Fields(info["ID_LIKE"]) {
-		if rpmDistros[like] {
-			return true
-		}
-	}
-	return false
-}
-
 func osEcosystem(info map[string]string) model.Ecosystem {
 	id := info["ID"]
 	version := info["VERSION_ID"]
@@ -54,9 +40,28 @@ func osEcosystem(info map[string]string) model.Ecosystem {
 			return model.Ecosystem("Ubuntu:" + version + ":LTS")
 		}
 		return model.Ecosystem("Ubuntu:" + version)
+	case "rocky":
+		return model.Ecosystem("Rocky Linux:" + majorVersion(version))
+	case "almalinux":
+		return model.Ecosystem("AlmaLinux:" + majorVersion(version))
+	case "rhel": // also Red Hat's UBI images
+		// Through RHEL 9, OSV files advisories per major version and
+		// repository (internal/osv adds the repository); from RHEL 10 on,
+		// per minor version.
+		if major := majorVersion(version); major == "7" || major == "8" || major == "9" {
+			return model.Ecosystem("Red Hat:enterprise_linux:" + major)
+		}
+		return model.Ecosystem("Red Hat:enterprise_linux:" + version)
 	default:
+		// Not a distribution ojo can form an OSV ecosystem for; see
+		// WithoutAdvisories.
 		return model.Ecosystem(id)
 	}
+}
+
+func majorVersion(version string) string {
+	major, _, _ := strings.Cut(version, ".")
+	return major
 }
 
 func isUbuntuLTS(version string) bool {

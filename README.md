@@ -42,13 +42,13 @@ $ mkdocs serve
 
 | Scanner | What it finds | Runs by default |
 |---|---|---|
-| Vulnerability | Known CVEs in dependency manifests (ten ecosystems, see [Coverage](docs/reference/coverage.md)) plus OS packages (Alpine, Debian, Ubuntu) and Node.js packages in container images, via [OSV.dev](https://osv.dev) | ✅ |
+| Vulnerability | Known CVEs in dependency manifests (eleven ecosystems, see [Coverage](docs/reference/coverage.md)) plus OS packages (Alpine, Debian, Ubuntu, RHEL/UBI, Rocky Linux, AlmaLinux) and Node.js packages in container images, via [OSV.dev](https://osv.dev) | ✅ |
 | Secret | Hardcoded credentials, API keys, tokens, private keys | Opt-in (`--scanners secret`) |
 | Misconfiguration | Security misconfigurations in Dockerfiles, Kubernetes manifests, Terraform (AWS/Azure/GCP), CloudFormation, MCP server configs, Claude Code skill definitions, and Android APK manifests | Opt-in (`--scanners misconfig`) |
 | SAST | Injection, weak crypto, and other source-level issues in Go (`go/ast`-based), Python, JavaScript/TypeScript, PHP, Ruby, and Java (tree-sitter-based) | Opt-in (`--scanners sast`) |
 | Code quality | Maintainability smells: complexity, function length, nesting depth, parameter count, duplicate code, TODO/FIXME comments | Opt-in (`--scanners quality`) |
 
-Output is a table by default; `-f json`, `-f sarif`, `-f sbom` (CycloneDX), and `-f vex` (OpenVEX) are available on every command, and `ojo fs -g` writes GitLab security reports. Findings can be suppressed with a `.ojoignore` file or an OpenVEX document (`--vex-file`), and flagged against CISA's Known Exploited Vulnerabilities catalog with `--kev`.
+Output is a table by default; `-f json`, `-f sarif`, `-f sbom` (CycloneDX, with package licenses), and `-f vex` (OpenVEX) are available on every command, and `ojo fs -g` writes GitLab security reports. Findings can be suppressed with a `.ojoignore` file or an OpenVEX document (`--vex-file`), and flagged against CISA's Known Exploited Vulnerabilities catalog with `--kev`.
 
 ## Building from source
 
@@ -61,7 +61,7 @@ $ go build -o ojo .
 
 ## Status
 
-ojo is young — see [Roadmap & Limitations](docs/roadmap.md) for what isn't supported yet (rpm-based container images, dependency license scanning, and more).
+ojo is young — see [Roadmap & Limitations](docs/roadmap.md) for what isn't supported yet (license policy checks, SPDX output, Kubernetes cluster scanning, and more).
 
 ## License
 

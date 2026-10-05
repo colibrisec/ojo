@@ -33,7 +33,7 @@ Scanners (--scanners, comma-separated, ojo fs only):
 Output formats (-f/--format, both commands):
   table      human-readable box-drawn table (default)
   json       machine-readable
-  sbom       CycloneDX SBOM of discovered packages, skips vulnerability scanning
+  sbom       CycloneDX SBOM of discovered packages and their licenses, skips vulnerability scanning
   sarif      SARIF 2.1.0, for GitHub code scanning and similar tooling
   vex        OpenVEX document for the vulnerability findings`,
 		Example: `  ojo fs .

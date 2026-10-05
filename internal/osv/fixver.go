@@ -2,6 +2,7 @@ package osv
 
 import (
 	"regexp"
+	"slices"
 	"strconv"
 
 	"github.com/colibrisec/ojo/internal/model"
@@ -9,8 +10,9 @@ import (
 
 func resolveFixedVersion(d vulnDetail, pkg model.Package) string {
 	var best string
+	targets := queryTargets(pkg)
 	for _, aff := range d.Affected {
-		if aff.Package.Name != pkg.QueryName() || aff.Package.Ecosystem != string(pkg.Ecosystem) {
+		if !slices.Contains(targets, target{aff.Package.Name, aff.Package.Ecosystem}) {
 			continue
 		}
 		for _, r := range aff.Ranges {
