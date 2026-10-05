@@ -25,7 +25,7 @@ jobs:
       - name: Test
         run: go test -coverprofile=coverage.out -covermode=atomic ./...
       - name: Coverage report
-        uses: getsentry/codecov-action@4426dbc18439965223bb478e343f229c178856a3 # v0.4.1
+        uses: getsentry/codecov-action@88418cdae07a8bac2beaec1550bcafff9ec55c8b # v0.4.3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           post-pr-comment: true
