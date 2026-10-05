@@ -2,3 +2,4 @@
 dockerfile-latest-tag      Dockerfile  # scratch has no version
 dockerfile-root-user       Dockerfile  # scratch has no user
 dockerfile-no-healthcheck  Dockerfile  # one-shot CLI, no long-running process to health-check
+go-weak-hash               internal/cocoapods/cocoapods.go  # MD5 is the CocoaPods CDN's directory-sharding scheme, not a security use; no other hash locates the file

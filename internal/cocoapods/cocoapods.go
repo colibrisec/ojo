@@ -79,7 +79,9 @@ func Resolve(ctx context.Context, pkgs []model.Package) (out []model.Package, un
 }
 
 // specURL is where the CDN serves a pod version's spec: sharded by the
-// first three hex digits of the pod name's MD5.
+// first three hex digits of the pod name's MD5. MD5 is the CDN's own
+// directory layout, not a security control -- nothing is authenticated or
+// protected by it, and no other hash would find the file.
 func specURL(name, version string) string {
 	sum := md5.Sum([]byte(name))
 	h := hex.EncodeToString(sum[:])
