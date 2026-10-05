@@ -25,7 +25,7 @@ $ ojo fs --scanners misconfig .
 $ ojo image python:3.14-slim
 ```
 
-This pulls the image, reads its installed OS packages (apk or dpkg) and Node.js packages, and checks them against [OSV.dev](https://osv.dev).
+This pulls the image, reads its installed OS packages (apk, dpkg, or rpm) and Node.js packages, and checks them against [OSV.dev](https://osv.dev).
 
 ## Output formats
 
@@ -35,7 +35,7 @@ Every command supports `-f`/`--format`:
 $ ojo fs -f table .   # default: human-readable box-drawn table
 $ ojo fs -f json .    # machine-readable, for piping into other tools
 $ ojo fs -f sarif .   # SARIF 2.1.0, for GitHub code scanning and similar tooling
-$ ojo fs -f sbom .    # CycloneDX 1.7 SBOM of discovered packages
+$ ojo fs -f sbom .    # CycloneDX 1.7 SBOM of discovered packages and their licenses
 $ ojo fs -f vex .     # OpenVEX document for the vulnerability findings
 ```
 

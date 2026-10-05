@@ -10,6 +10,7 @@ import (
 	cdx "github.com/CycloneDX/cyclonedx-go"
 
 	"github.com/colibrisec/ojo/internal/ignore"
+	"github.com/colibrisec/ojo/internal/license"
 	"github.com/colibrisec/ojo/internal/model"
 )
 
@@ -221,6 +222,7 @@ func SBOM(w io.Writer, pkgs []model.Package, version cdx.SpecVersion) error {
 			Name:       p.Name,
 			Version:    p.Version,
 			PackageURL: Purl(p),
+			Licenses:   sbomLicenses(p.License),
 		})
 	}
 	bom.Components = &components
@@ -228,6 +230,25 @@ func SBOM(w io.Writer, pkgs []model.Package, version cdx.SpecVersion) error {
 	enc := cdx.NewBOMEncoder(w, cdx.BOMFileFormatJSON)
 	enc.SetPretty(true)
 	return enc.EncodeVersion(bom, version)
+}
+
+// sbomLicenses renders a package's license for CycloneDX, which wants one of
+// three shapes: an SPDX license ID, an SPDX expression, or -- for anything
+// else, such as a distribution's own short name ("GPLv2+") -- a free-form
+// name. Only identifiers internal/license recognizes are written as an ID or
+// expression, since the schema rejects an unknown ID.
+func sbomLicenses(l string) *cdx.Licenses {
+	l = strings.TrimSpace(l)
+	switch {
+	case l == "":
+		return nil
+	case license.IsSPDXID(l):
+		return &cdx.Licenses{{License: &cdx.License{ID: l}}}
+	case license.IsSPDXExpression(l):
+		return &cdx.Licenses{{Expression: l}}
+	default:
+		return &cdx.Licenses{{License: &cdx.License{Name: l}}}
+	}
 }
 
 // Purl returns a package-url (https://github.com/package-url/purl-spec)
@@ -241,6 +262,8 @@ func Purl(p model.Package) string {
 		return fmt.Sprintf("pkg:npm/%s@%s", p.Name, p.Version)
 	case model.EcosystemPyPI:
 		return fmt.Sprintf("pkg:pypi/%s@%s", p.Name, p.Version)
+	case model.EcosystemCocoaPods:
+		return fmt.Sprintf("pkg:cocoapods/%s@%s", p.Name, p.Version)
 	default:
 		return fmt.Sprintf("pkg:generic/%s@%s", p.Name, p.Version)
 	}

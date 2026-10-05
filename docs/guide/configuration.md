@@ -77,7 +77,7 @@ Both commands.
 |---|---|
 | `table` (default) | Box-drawn human-readable table |
 | `json` | Machine-readable, for piping into other tools |
-| `sbom` | CycloneDX SBOM, spec 1.7 unless `--cyclonedx-version` says otherwise (see [SBOM](sbom.md)) — skips vulnerability scanning entirely |
+| `sbom` | CycloneDX SBOM, spec 1.7 unless `--cyclonedx-version` says otherwise (see [SBOM](sbom.md)), including package licenses — skips vulnerability scanning entirely |
 | `sarif` | [SARIF](https://docs.oasis-open.org/sarif/sarif/v2.1.0/) 2.1.0, for `github/codeql-action/upload-sarif` and similar tooling (validated against the official schema) |
 | `vex` | [OpenVEX](https://openvex.dev) document for the vulnerability findings (see [CLI Reference: VEX](../reference/cli.md#vex-f-vex-vex-file)) |
 

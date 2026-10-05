@@ -2,11 +2,43 @@ package cli
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/colibrisec/ojo/internal/kev"
 	"github.com/colibrisec/ojo/internal/model"
 )
+
+// TestMain keeps every test in this package off the network by default:
+// SBOM output would otherwise ask deps.dev and the CocoaPods CDN for
+// licenses. Tests that exercise those paths install their own stubs.
+func TestMain(m *testing.M) {
+	licenseLookup = func(ctx context.Context, pkgs []model.Package) ([]model.Package, error) {
+		return pkgs, nil
+	}
+	podResolve = func(ctx context.Context, pkgs []model.Package) ([]model.Package, int) {
+		return pkgs, 0
+	}
+	os.Exit(m.Run())
+}
+
+func stubLicenseLookup(t *testing.T, fn func([]model.Package) ([]model.Package, error)) {
+	t.Helper()
+	old := licenseLookup
+	licenseLookup = func(ctx context.Context, pkgs []model.Package) ([]model.Package, error) {
+		return fn(pkgs)
+	}
+	t.Cleanup(func() { licenseLookup = old })
+}
+
+func stubPodResolve(t *testing.T, fn func([]model.Package) ([]model.Package, int)) {
+	t.Helper()
+	old := podResolve
+	podResolve = func(ctx context.Context, pkgs []model.Package) ([]model.Package, int) {
+		return fn(pkgs)
+	}
+	t.Cleanup(func() { podResolve = old })
+}
 
 func stubImageScan(t *testing.T, pkgs []model.Package, osLabel string, err error) {
 	t.Helper()

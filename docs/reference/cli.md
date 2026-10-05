@@ -14,7 +14,7 @@ Scanners (--scanners, comma-separated, ojo fs only):
 Output formats (-f/--format, both commands):
   table      human-readable box-drawn table (default)
   json       machine-readable
-  sbom       CycloneDX SBOM of discovered packages, skips vulnerability scanning
+  sbom       CycloneDX SBOM of discovered packages and their licenses, skips vulnerability scanning
   sarif      SARIF 2.1.0, for GitHub code scanning and similar tooling
   vex        OpenVEX document for the vulnerability findings
 
@@ -64,6 +64,7 @@ Flags:
   -h, --help                       help for fs
       --ignore-file string         path to a .ojoignore file (default: .ojoignore in the current directory, if present)
       --kev                        flag findings whose CVE is in CISA's Known Exploited Vulnerabilities catalog (confirmed real-world exploitation); annotation only, doesn't affect exit code
+      --no-license-lookup          don't look up package licenses online (deps.dev, CocoaPods) for SBOM output; only licenses found locally are included
       --respect-gitignore          skip untracked files that git ignores (e.g. build output, coverage reports); no effect outside a git repository
       --rules-dir string           directory of custom *.yaml SAST rules (default: <path>/.ojo/rules, if present); runs alongside --scanners sast
       --sarif-omit-suppressed      omit results suppressed by .ojoignore or a VEX file from -f sarif output instead of marking them suppressed; for consumers such as GitHub code scanning that ignore SARIF suppressions
@@ -82,6 +83,10 @@ Selects the CycloneDX spec version for `-f sbom` output (and `-g`'s `gl-sbom-rep
 ### `--scanners quality`
 
 Maintainability smells (complexity, length, nesting, parameter count, duplicate code) — not security findings. Off by default, opt in with `--scanners quality` (combine with others, e.g. `--scanners vuln,quality`). See [Code Quality scanner](../guide/scanner/quality.md) for the full rule list and thresholds. Not included in `-g/--gitlab`'s report set — no GitLab Code Quality (`gl-code-quality-report.json`) writer yet.
+
+### `--no-license-lookup`
+
+`-f sbom` (and `-g`'s SBOM) looks up package licenses online: [deps.dev](https://deps.dev) for Go, npm, PyPI, Maven, NuGet, crates.io, and RubyGems packages, and the CocoaPods spec CDN for pods. This flag skips those lookups, so the SBOM contains only licenses recorded locally and needs no network access. Works on both `ojo fs` and `ojo image`. See [SBOM: Licenses](../guide/sbom.md#licenses).
 
 ### `--rules-dir`
 
@@ -146,6 +151,7 @@ Flags:
   -h, --help                       help for image
       --ignore-file string         path to a .ojoignore file (default: .ojoignore in the current directory, if present)
       --kev                        flag findings whose CVE is in CISA's Known Exploited Vulnerabilities catalog (confirmed real-world exploitation); annotation only, doesn't affect exit code
+      --no-license-lookup          don't look up package licenses online (deps.dev, CocoaPods) for SBOM output; only licenses found locally are included
       --platform string            image platform to pull as os/arch, e.g. linux/arm64 (default: linux/amd64)
       --sarif-omit-suppressed      omit results suppressed by .ojoignore or a VEX file from -f sarif output instead of marking them suppressed; for consumers such as GitHub code scanning that ignore SARIF suppressions
       --vex-file string            path to an OpenVEX document; suppresses findings its not_affected/fixed statements cover (matched by product purl and CVE/alias)
@@ -153,7 +159,7 @@ Flags:
 
 `ref` is required — any reference `docker pull` would accept (`nginx:1.25`, `myregistry.example.com/app:latest`, `python@sha256:...`).
 
-`--kev`, `--vex-file`/`-f vex`, `--ignore-file`, `--cyclonedx-version`, and `--sarif-omit-suppressed` behave as described under [`ojo fs`](#ojo-fs).
+`--kev`, `--vex-file`/`-f vex`, `--ignore-file`, `--cyclonedx-version`, `--no-license-lookup`, and `--sarif-omit-suppressed` behave as described under [`ojo fs`](#ojo-fs).
 
 ### `--platform`
 

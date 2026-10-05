@@ -27,6 +27,11 @@ var parsers = []Parser{
 	gradleLockParser{},
 	mavenPomParser{},
 	swiftPackageResolvedParser{},
+	uvLockParser{},
+	pdmLockParser{},
+	yarnLockParser{},
+	pnpmLockParser{},
+	podfileLockParser{},
 }
 
 func Discover(root string) ([]model.Package, error) {
@@ -42,6 +47,7 @@ func Discover(root string) ([]model.Package, error) {
 				for _, pkg := range found {
 					dedupeKey := pkg
 					dedupeKey.Source = "" // same package via a different file is still a duplicate
+					dedupeKey.License = ""
 					if seen[dedupeKey] {
 						continue
 					}

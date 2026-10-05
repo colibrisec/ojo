@@ -37,6 +37,7 @@ func fsCmd() *cobra.Command {
 	var vexFile string
 	var respectGitignore bool
 	var sarifOmitSuppressed bool
+	var noLicenseLookup bool
 
 	cmd := &cobra.Command{
 		Use:   "fs [path]",
@@ -74,7 +75,7 @@ func fsCmd() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("discovering manifests: %w", err)
 				}
-				return report.SBOM(cmd.OutOrStdout(), pkgs, sbomVersion)
+				return report.SBOM(cmd.OutOrStdout(), withLicenses(cmd, pkgs, noLicenseLookup), sbomVersion)
 			}
 
 			if gitlab {
@@ -114,7 +115,7 @@ func fsCmd() *cobra.Command {
 					if err != nil {
 						return fmt.Errorf("discovering manifests: %w", err)
 					}
-					findings, err := osvScan(cmd.Context(), pkgs)
+					findings, err := osvScan(cmd.Context(), resolvePods(cmd, pkgs))
 					if err != nil {
 						return fmt.Errorf("querying OSV: %w", err)
 					}
@@ -185,6 +186,7 @@ func fsCmd() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("discovering manifests: %w", err)
 				}
+				pkgs = withLicenses(cmd, pkgs, noLicenseLookup)
 				files := []struct {
 					name  string
 					write func(io.Writer) error
@@ -245,6 +247,7 @@ func fsCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&kevFlag, "kev", false, "flag findings whose CVE is in CISA's Known Exploited Vulnerabilities catalog (confirmed real-world exploitation); annotation only, doesn't affect exit code")
 	cmd.Flags().BoolVar(&sarifOmitSuppressed, "sarif-omit-suppressed", false, "omit results suppressed by .ojoignore or a VEX file from -f sarif output instead of marking them suppressed; for consumers such as GitHub code scanning that ignore SARIF suppressions")
 	cmd.Flags().BoolVar(&respectGitignore, "respect-gitignore", false, "skip untracked files that git ignores (e.g. build output, coverage reports); no effect outside a git repository")
+	cmd.Flags().BoolVar(&noLicenseLookup, "no-license-lookup", false, noLicenseLookupUsage)
 	cmd.Flags().StringVar(&vexFile, "vex-file", "", "path to an OpenVEX document; suppresses findings its not_affected/fixed statements cover (matched by product purl and CVE/alias)")
 	return cmd
 }

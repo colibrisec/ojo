@@ -85,7 +85,7 @@ func TestParseApk(t *testing.T) {
 func TestParseDpkg(t *testing.T) {
 	data := []byte("Package: bash\nStatus: install ok installed\nVersion: 5.0-6\n\n" +
 		"Package: removed-pkg\nStatus: deinstall ok config-files\nVersion: 1.0\n\n")
-	pkgs := parseDpkg(data, "Debian:11")
+	pkgs := parseDpkg(data, "Debian:11", nil)
 	if len(pkgs) != 1 || pkgs[0].Name != "bash" || pkgs[0].Version != "5.0-6" {
 		t.Fatalf("expected only the installed package, got: %+v", pkgs)
 	}
@@ -100,6 +100,11 @@ func TestOSEcosystem(t *testing.T) {
 		{map[string]string{"ID": "debian", "VERSION_ID": "11"}, "Debian:11"},
 		{map[string]string{"ID": "ubuntu", "VERSION_ID": "22.04"}, "Ubuntu:22.04:LTS"},
 		{map[string]string{"ID": "ubuntu", "VERSION_ID": "23.10"}, "Ubuntu:23.10"},
+		{map[string]string{"ID": "rocky", "VERSION_ID": "9.4"}, "Rocky Linux:9"},
+		{map[string]string{"ID": "almalinux", "VERSION_ID": "8.10"}, "AlmaLinux:8"},
+		{map[string]string{"ID": "rhel", "VERSION_ID": "9.4"}, "Red Hat:enterprise_linux:9"},
+		{map[string]string{"ID": "rhel", "VERSION_ID": "10.1"}, "Red Hat:enterprise_linux:10.1"},
+		{map[string]string{"ID": "fedora", "VERSION_ID": "42"}, "fedora"},
 	}
 	for _, c := range cases {
 		if got := string(osEcosystem(c.info)); got != c.want {
@@ -140,7 +145,7 @@ func TestParseDpkgRecordsSourcePackage(t *testing.T) {
 	data := []byte("Package: libc6\nStatus: install ok installed\nSource: glibc (2.36-9+deb12u4)\nVersion: 2.36-9+deb12u4\n\n" +
 		"Package: libbash\nStatus: install ok installed\nSource: bash\nVersion: 5.2-1\n\n" +
 		"Package: tar\nStatus: install ok installed\nVersion: 1.34-1\n\n")
-	pkgs := parseDpkg(data, "Debian:12")
+	pkgs := parseDpkg(data, "Debian:12", nil)
 	if len(pkgs) != 3 {
 		t.Fatalf("expected 3 packages, got %+v", pkgs)
 	}
@@ -287,13 +292,6 @@ func TestScanFSWithoutPackageDatabases(t *testing.T) {
 	}
 	if len(pkgs) != 0 {
 		t.Errorf("expected no packages, got %+v", pkgs)
-	}
-}
-
-func TestScanFSRejectsRPMImages(t *testing.T) {
-	_, _, err := scanFS(bytes.NewReader(imageTar(t, map[string]string{"etc/os-release": "ID=rhel\nVERSION_ID=9.3\n"})), "test")
-	if err == nil || !strings.Contains(err.Error(), "rpm-based") {
-		t.Errorf("expected an rpm-based image error, got %v", err)
 	}
 }
 

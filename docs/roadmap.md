@@ -4,7 +4,7 @@ ojo is young. This page is the honest, unvarnished list of what it doesn't do ye
 
 ## Targets
 
-- **rpm-based images** (RHEL, CentOS, Fedora, Amazon Linux, Rocky, AlmaLinux) aren't scanned — rpm databases (Berkeley DB/SQLite/NDB) need a real parser like [go-rpmdb](https://github.com/knqyf263/go-rpmdb), not hand-rolled parsing. `ojo image` detects these and refuses with a clear error instead of silently returning zero packages.
+- **rpm-based images**: RHEL/UBI, Rocky Linux, and AlmaLinux are scanned. Fedora, CentOS, Amazon Linux, Oracle Linux, and SUSE packages are read (so `-f sbom` works) but can't be checked for vulnerabilities — OSV has no advisories ojo can match for them, and `ojo image` refuses rather than report zero. On RHEL 7–9 only the BaseOS/AppStream (RHEL 7: Server) repositories are covered, and modular streams aren't distinguished. See [Container Image](guide/target/container-image.md#rpm-specifics).
 - **No Kubernetes cluster scanning.** The misconfiguration scanner reads static YAML manifests on disk; there's no `ojo image` equivalent that talks to a live cluster.
 - **Image scanning covers OS packages and Node.js packages only** — no other language runtimes inside images, and no secret/misconfiguration/SAST scanning of image contents. One platform per scan (`--platform os/arch`, default `linux/amd64`).
 - **One target per invocation.** No combined multi-artifact report (e.g. scanning an image *and* its app manifests together in one summary).
@@ -13,7 +13,7 @@ ojo is young. This page is the honest, unvarnished list of what it doesn't do ye
 
 - See [Coverage](reference/coverage.md) for the current, authoritative list of supported dependency ecosystems, OS package managers, IaC formats, and SAST languages — it changes often enough that duplicating it here just goes stale.
 - `requirements.txt` parsing is pinned `name==version` lines only — no version ranges, extras, environment markers, or VCS URLs.
-- **Missing lockfile formats**: `uv.lock` and `pdm.lock` (PyPI), `yarn.lock` and `pnpm-lock.yaml` (npm). Projects using only those aren't scanned for that ecosystem.
+- **CocoaPods** (`Podfile.lock`) is matched through each pod's git repository, so private pods and pods without a git source can't be checked (ojo reports how many).
 - No unlocked-manifest support anywhere (`package.json` without a lockfile, `build.gradle`/`build.gradle.kts` DSL parsing) — ojo only reads already-resolved dependency data.
 
 ## Scanners
@@ -23,12 +23,12 @@ ojo is young. This page is the honest, unvarnished list of what it doesn't do ye
 - **SAST scanner**: covers Go, Python, JavaScript/TypeScript, PHP, Ruby, and Java. Intraprocedural taint tracking across all six (sees through one local variable between a request/env source and a sink, on whichever rules structurally support it — see the SAST guide for exact coverage); user-authorable custom rules via `--rules-dir` for the five gotreesitter-backed languages (raw tree-sitter queries, not a Semgrep-style metavariable pattern language — no Go, see [SAST scanner: Custom rules](guide/scanner/sast.md#custom-rules)); interprocedural tracking is same-file only and one direction (a tainted argument seeds the callee's parameter; calls are resolved by name, never across files or through qualified/method calls) — see [SAST scanner](guide/scanner/sast.md) for the full per-language rule lists and honest ceiling.
 - **Code quality scanner** (`--scanners quality`): cyclomatic complexity, function length, nesting depth, parameter count, and cross-file duplicate-code detection, across the same six languages. Thresholds are hardcoded, not yet `.ojo.yaml`-configurable; duplicate detection is textual (line-based), not semantic; no GitLab Code Quality report format yet — see [Code Quality scanner](guide/scanner/quality.md) for the full rule list and honest ceiling.
 - **CWE mapping** covers `secret`, `misconfig`, and built-in `sast` rules; custom SAST rules and `quality` rules carry none.
-- **License scanning**: not implemented.
+- **Licenses** are identified in SBOM output (see [SBOM](guide/sbom.md#licenses)), but there's no license policy: no allow/deny list, no findings, no exit code tied to a license. Packagist, Pub, and SwiftURL packages get no license at all, and only a common subset of SPDX identifiers is recognized as such — anything else is written as a free-form name.
 - **VEX**: `-f vex` emits an [OpenVEX](https://openvex.dev) document (every statement asserts `affected` — ojo has no reachability analysis to justify anything else); `--vex-file` consumes one, suppressing findings its `not_affected`/`fixed` statements cover. Product matching is exact purl equality, no normalization.
 
 ## Vulnerability data
 
-- **No local database.** Every scan queries the live [OSV.dev](https://osv.dev) API — no offline/air-gapped mode.
+- **No local database.** Every scan queries the live [OSV.dev](https://osv.dev) API — no offline/air-gapped mode. (`-f sbom --no-license-lookup` is the one fully offline operation.)
 - **Fixed-version resolution** uses a generic, approximate version comparator, not each ecosystem's exact comparison rules (dpkg epoch/tilde semantics, real semver, PEP 440).
 - **Ubuntu LTS detection** is a release-history heuristic (even year, April release), not derived from an authoritative source.
 - `--kev` cross-references findings against CISA's Known Exploited Vulnerabilities catalog (annotation only, doesn't affect exit code).
