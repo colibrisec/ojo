@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   version:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.bump.outputs.version }}
     steps:
@@ -40,7 +40,7 @@ jobs:
           echo "version=v0.${minor}.${patch}" >> "$GITHUB_OUTPUT"
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -53,7 +53,7 @@ jobs:
 
   build:
     needs: [version, test]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         include:
@@ -91,7 +91,7 @@ jobs:
 
   package-linux:
     needs: [version, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -150,7 +150,7 @@ jobs:
 
   release:
     needs: [version, build, package-linux, package-windows]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -169,7 +169,7 @@ jobs:
 
   docker:
     needs: [version, test]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       digest: ${{ steps.build.outputs.digest }}
     steps:
@@ -197,7 +197,7 @@ jobs:
   # are mutable and :latest gets reused on every release.
   image-scan:
     needs: [docker]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       security-events: write
@@ -236,7 +236,7 @@ jobs:
   # doesn't block binaries/packages/Docker, which already published above.
   homebrew:
     needs: [version, build, release]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -306,7 +306,7 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
           - arch: arm64
             runner: ubuntu-24.04-arm
     steps:
@@ -335,7 +335,7 @@ jobs:
   # and winget above.
   snap:
     needs: [version, package-snap]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -361,7 +361,7 @@ jobs:
   # the PR) — same "optional, doesn't block the rest" story as Homebrew.
   winget:
     needs: [version, package-windows, release]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       # The colibrisec/winget-pkgs fork doesn't stay in sync with upstream on
       # its own -- without this, komac tries to branch from a commit its
@@ -384,7 +384,7 @@ jobs:
   # and then pushed to AUR -- nothing is regenerated in between.
   aur-render:
     needs: [version, release]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -414,7 +414,7 @@ jobs:
   # own official container image.
   aur-test-amd64:
     needs: [aur-render]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: archlinux:base-devel
     strategy:
       matrix:
@@ -475,7 +475,7 @@ jobs:
   # packages/Docker/Homebrew/snap/winget, which already published above.
   aur-publish:
     needs: [version, aur-render, aur-test-amd64, aur-test-arm64]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: archlinux:base-devel
     strategy:
       matrix:
