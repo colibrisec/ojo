@@ -29,6 +29,8 @@ A match is suppressed (not reported) when **both** of these hold:
 
 Both conditions are required. A real credential accidentally committed into a test file — one with no marker words and no hand-typed structure — is still reported. See `internal/secret/placeholder.go` for the exact rules.
 
+The one exception that applies in any file: AWS's own documentation example credentials (`AKIAIOSFODNN7EXAMPLE` and its matching secret key) are never reported.
+
 ## Built-in rules (14)
 
 | Rule | Severity |
@@ -48,12 +50,46 @@ Both conditions are required. A real credential accidentally committed into a te
 | JSON Web Token | MEDIUM |
 | Generic secret/password/token assignment (keyword+entropy gated, highest false-positive risk) | LOW |
 
-Rules are embedded in the binary (`internal/secret/default_rules.yaml`) — no external rules file to manage.
+Rules are embedded in the binary (`internal/secret/default_rules.yaml`) — nothing to download or sync. Issues carry CWE IDs (e.g. CWE-798) in every output format.
+
+## Custom rules (`--secret-rules-file`)
+
+Add your own rules in a YAML file with the same shape as the built-in set, and pass it with `--secret-rules-file`. They run alongside the built-in rules whenever `secret` is in `--scanners`:
+
+```yaml
+rules:
+  - id: acme-internal-token
+    description: ACME internal service token
+    regex: 'acme_[a-z0-9]{32}'
+    keywords: [acme_]     # optional
+    minEntropy: 3.5       # optional
+    severity: HIGH
+```
+
+```console
+$ ojo fs --scanners secret --secret-rules-file ci/secret-rules.yaml .
+```
+
+A custom rule `id` that collides with a built-in one is a load error. Custom rules add to the built-in set; there's no way to disable a built-in rule other than suppressing its findings.
+
+## Git history (`--secret-git-history`)
+
+By default only the working tree is scanned. Add `--secret-git-history` to also scan `git log -p` on the current branch, so a secret that was committed and later removed is still caught:
+
+```console
+$ ojo fs --scanners secret --secret-git-history .
+```
+
+`path` must be a git repository and `git` must be on `PATH`. Only the checked-out branch's history is read (not every ref), and a secret is reported once per commit that added it, without deduplication — so it can be slow and noisy on a long history.
+
+## Suppressing findings
+
+Acknowledge a known false positive or accepted risk in [`.ojoignore`](../configuration.md#risk-acceptance-ojoignore), by rule ID and path glob. There's no separate baseline file.
 
 ## What it doesn't do (yet)
 
-- **No git history scanning.** ojo scans the working tree, not past commits — a secret that was committed and later removed won't be found. This is gitleaks' actual differentiator; ojo doesn't have it.
-- **No custom rules file / `--rules-dir` override.** The 14 built-in rules are all you get today.
-- **No suppression/baseline file** for acknowledging known false positives.
+- **Only config-shaped files are scanned**, not source code (see the list above). The [SAST scanner](sast.md)'s `*-hardcoded-secret` rules cover literals assigned in source.
+- **Git history scanning is current-branch only**, with no deduplication across commits.
+- **No live verification** of whether a matched credential is still valid.
 
 See [Roadmap & Limitations](../../roadmap.md).

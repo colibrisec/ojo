@@ -10,12 +10,12 @@ By default this runs only the **vulnerability** scanner against the current dire
 
 ```console
 # Everything ojo can check
-$ ojo fs --scanners vuln,secret,misconfig,sast .
+$ ojo fs --scanners vuln,secret,misconfig,sast,quality .
 
 # Vulnerabilities plus hardcoded secrets
 $ ojo fs --scanners vuln,secret .
 
-# Just misconfiguration checks (Dockerfile / Kubernetes / Terraform)
+# Just misconfiguration checks (Dockerfile, Kubernetes, Terraform, CloudFormation, ...)
 $ ojo fs --scanners misconfig .
 ```
 
@@ -25,7 +25,7 @@ $ ojo fs --scanners misconfig .
 $ ojo image python:3.14-slim
 ```
 
-This pulls the image, reads its installed OS packages (apk or dpkg), and checks them against [OSV.dev](https://osv.dev).
+This pulls the image, reads its installed OS packages (apk or dpkg) and Node.js packages, and checks them against [OSV.dev](https://osv.dev).
 
 ## Output formats
 
@@ -34,8 +34,12 @@ Every command supports `-f`/`--format`:
 ```console
 $ ojo fs -f table .   # default: human-readable box-drawn table
 $ ojo fs -f json .    # machine-readable, for piping into other tools
+$ ojo fs -f sarif .   # SARIF 2.1.0, for GitHub code scanning and similar tooling
 $ ojo fs -f sbom .    # CycloneDX 1.7 SBOM of discovered packages
+$ ojo fs -f vex .     # OpenVEX document for the vulnerability findings
 ```
+
+`ojo fs -g .` writes GitLab security report files instead — see the [CLI Reference](../reference/cli.md#-g-gitlab).
 
 ## Exit codes
 
@@ -49,4 +53,5 @@ $ ojo fs . ; echo "exit code: $?"
 
 - [Filesystem scanning](../guide/target/filesystem.md) in depth
 - [Container image scanning](../guide/target/container-image.md) in depth
+- [Configuration](../guide/configuration.md) for `.ojo.yaml` defaults and suppressing findings with `.ojoignore`
 - [CLI Reference](../reference/cli.md) for every flag

@@ -49,6 +49,15 @@ Each release also publishes native packages, built from the same binaries above:
 
     Download `ojo_vX.Y.Z_windows_amd64.msi` from the [releases page](https://github.com/colibrisec/ojo/releases) and run it — it installs to `Program Files\ojo` and adds that directory to `PATH`.
 
+=== "Arch Linux (AUR)"
+
+    ```console
+    $ yay -S ojo-bin   # prebuilt release binary
+    $ yay -S ojo       # or: build from the release source tarball
+    ```
+
+    Two packages are published to the [AUR](https://aur.archlinux.org/) for `x86_64` and `aarch64`; they conflict with each other, so install one. Any AUR helper works, or clone the package repo and run `makepkg -si`.
+
 === "Linux (Snap)"
 
     ```console
@@ -78,7 +87,7 @@ Mount a directory to scan it: `docker run --rm -v "$PWD:/src" ghcr.io/colibrisec
 
 ## Build from source
 
-Requires [Go 1.22+](https://go.dev/dl/).
+Requires [Go 1.26.5+](https://go.dev/dl/).
 
 ```console
 $ git clone https://github.com/colibrisec/ojo.git

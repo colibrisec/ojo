@@ -1,6 +1,6 @@
 # Scanner: Misconfiguration
 
-Checks Dockerfiles, Kubernetes manifests, Terraform (AWS/Azure/GCP), CloudFormation templates, MCP server configs, and Claude Code skill definitions for common security misconfigurations.
+Checks Dockerfiles, Kubernetes manifests, Terraform (AWS/Azure/GCP), CloudFormation templates, MCP server configs, Claude Code skill definitions, and Android APK manifests for common security misconfigurations.
 
 Off by default — enable with `--scanners misconfig` (or combine: `--scanners vuln,secret,misconfig`).
 
@@ -18,7 +18,9 @@ Off by default — enable with `--scanners misconfig` (or combine: `--scanners v
 
 Every `*.yaml`/`*.yml` file is tried as both a Kubernetes manifest and a CloudFormation template; each is a no-op on a file that doesn't look like its format (missing `apiVersion`+`kind`, or no CloudFormation-shaped `Resources`), so there's no real ambiguity cost to trying both. Every `*.json` file is similarly tried as both a CloudFormation template and an MCP config.
 
-## Built-in checks (135)
+## Built-in checks (138)
+
+Most checks carry CWE IDs, shown in every output format.
 
 **Dockerfile**
 
@@ -91,9 +93,9 @@ Every `*.yaml`/`*.yml` file is tried as both a Kubernetes manifest and a CloudFo
 - `google_container_cluster` (GKE) without a private cluster config, authorized networks, or network policy; or with legacy ABAC enabled
 - `google_pubsub_topic` without a customer-managed (`kms_key_name`) key
 
-**CloudFormation — AWS resources, YAML or JSON (15 checks)**
+**CloudFormation — AWS resources, YAML or JSON (17 checks)**
 
-Same resource-type coverage as the Terraform AWS checks where CloudFormation has an equivalent: `AWS::S3::Bucket` (public ACL, encryption, versioning, public access block), `AWS::EC2::SecurityGroup`/`SecurityGroupIngress`/`SecurityGroupEgress` (open CIDR), `AWS::RDS::DBInstance` (encryption, public access), `AWS::IAM::Policy`/`ManagedPolicy` (wildcard statements), `AWS::EC2::Instance`/`LaunchTemplate` (IMDSv2), `AWS::ElasticLoadBalancingV2::LoadBalancer` (internet-facing), `AWS::KMS::Key` (rotation), `AWS::CloudTrail::Trail` (log validation, multi-region), `AWS::DynamoDB::Table` (point-in-time recovery), `AWS::ECR::Repository` (tag mutability).
+Same resource-type coverage as the Terraform AWS checks where CloudFormation has an equivalent: `AWS::S3::Bucket` (public ACL, encryption, versioning, missing or incomplete public access block), `AWS::EC2::SecurityGroup`/`SecurityGroupIngress`/`SecurityGroupEgress` (open CIDR), `AWS::RDS::DBInstance` (encryption, public access), `AWS::IAM::Policy`/`ManagedPolicy` (wildcard statements), `AWS::EC2::Instance`/`LaunchTemplate` (IMDSv2), `AWS::ElasticLoadBalancingV2::LoadBalancer` (internet-facing), `AWS::KMS::Key` (rotation), `AWS::CloudTrail::Trail` (log validation, multi-region), `AWS::DynamoDB::Table` (point-in-time recovery), `AWS::ECR::Repository` (tag mutability).
 
 **MCP server config (8 checks)**
 
@@ -108,7 +110,7 @@ Same resource-type coverage as the Terraform AWS checks where CloudFormation has
 
 Secrets hardcoded in a server's `env` block aren't a separate check here — the [secret scanner](secret.md) already walks every `.json` file and flags them.
 
-**Skill definition (4 checks)**
+**Skill definition (5 checks)**
 
 - `skill-fetch-execute` (HIGH) — `curl`/`wget`/`iwr` piped directly into a shell/interpreter (`sh`/`bash`/`zsh`/`python`/`iex`), the classic fetch-and-execute supply-chain pattern.
 - `skill-credential-exfil-reference` (HIGH) — a well-known credential file path (`.ssh/id_rsa`, `.aws/credentials`, `.netrc`, `.env`, `.npmrc`, `.git-credentials`, `.docker/config.json`) appearing on the same line as an outbound-transfer verb (`curl`, `wget`, `post`, `upload`, `send`).
