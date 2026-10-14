@@ -119,6 +119,20 @@ func TestFsCmd_VulnScannerStub(t *testing.T) {
 	}
 }
 
+func TestFsCmd_VulnWarnsAboutUnpinnedRequirements(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "requirements.txt", "django==3.2.0\nnumpy>=1.0\n")
+	stubOSVScan(t, nil, nil)
+
+	out, err := run(t, dir, "--scanners", "vuln")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !strings.Contains(out, "warning: 1 requirement(s)") || !strings.Contains(out, "numpy (requirements.txt, version range)") {
+		t.Errorf("expected a warning naming numpy, got %q", out)
+	}
+}
+
 func TestFsCmd_PrintsScanProgress(t *testing.T) {
 	dir := t.TempDir()
 	stubOSVScan(t, nil, nil)

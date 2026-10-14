@@ -8,7 +8,7 @@ What ojo can actually scan today.
 |---|---|---|
 | Go | `go.mod` | ✅ |
 | npm | `package-lock.json` (v1 and v2/v3), `yarn.lock` (classic and Berry), `pnpm-lock.yaml` (v5–v9) | ✅ |
-| PyPI | `requirements.txt` (pinned `==` only), `Pipfile.lock`, `poetry.lock`, `uv.lock`, `pdm.lock` | ✅ |
+| PyPI | `requirements*.txt` (exact `==`/`===` pins only), `Pipfile.lock`, `poetry.lock`, `uv.lock`, `pdm.lock` | ✅ |
 | Maven | `pom.xml` (literal + same-file `${property}` versions only), `gradle.lockfile` | ✅ |
 | Packagist (PHP) | `composer.lock` | ✅ |
 | NuGet (.NET) | `packages.lock.json` (opt-in file) | ✅ |

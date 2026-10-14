@@ -2,9 +2,12 @@ package cli
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/colibrisec/ojo/internal/manifest"
 	"github.com/colibrisec/ojo/internal/model"
 )
 
@@ -52,4 +55,24 @@ func withLicenses(cmd *cobra.Command, pkgs []model.Package, skip bool) []model.P
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: license lookup failed, the SBOM may be missing licenses: %v\n", err)
 	}
 	return pkgs
+}
+
+func warnUnpinned(cmd *cobra.Command, root string, unpinned []manifest.Unscannable) {
+	if len(unpinned) == 0 {
+		return
+	}
+	const shown = 5
+	var names []string
+	for i, u := range unpinned {
+		if i == shown {
+			names = append(names, fmt.Sprintf("and %d more", len(unpinned)-shown))
+			break
+		}
+		rel, err := filepath.Rel(root, u.Source)
+		if err != nil {
+			rel = u.Source
+		}
+		names = append(names, fmt.Sprintf("%s (%s, %s)", u.Name, rel, u.Reason))
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "warning: %d requirement(s) have no exact version and were not checked for vulnerabilities: %s\n", len(unpinned), strings.Join(names, "; "))
 }

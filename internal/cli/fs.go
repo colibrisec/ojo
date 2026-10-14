@@ -121,10 +121,11 @@ func fsCmd() *cobra.Command {
 				switch strings.TrimSpace(s) {
 				case "vuln":
 					fmt.Fprintln(cmd.ErrOrStderr(), "Running vuln scan...")
-					pkgs, err := manifest.Discover(root)
+					pkgs, unpinned, err := manifest.DiscoverAll(root)
 					if err != nil {
 						return fmt.Errorf("discovering manifests: %w", err)
 					}
+					warnUnpinned(cmd, root, unpinned)
 					findings, err := osvScan(cmd.Context(), resolvePods(cmd, pkgs))
 					if err != nil {
 						return fmt.Errorf("querying OSV: %w", err)

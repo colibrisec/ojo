@@ -12,7 +12,7 @@ ojo is young. This page is the honest, unvarnished list of what it doesn't do ye
 ## Ecosystems
 
 - See [Coverage](reference/coverage.md) for the current, authoritative list of supported dependency ecosystems, OS package managers, IaC formats, and SAST languages — it changes often enough that duplicating it here just goes stale.
-- `requirements.txt` parsing is pinned `name==version` lines only — no version ranges, extras, environment markers, or VCS URLs.
+- Requirements files are checked only where a requirement pins an exact version; ranges, URL/VCS and editable requirements are listed in a warning, not resolved. Environment markers aren't evaluated.
 - **CocoaPods** (`Podfile.lock`) is matched through each pod's git repository, so private pods and pods without a git source can't be checked (ojo reports how many).
 - No unlocked-manifest support anywhere (`package.json` without a lockfile, `build.gradle`/`build.gradle.kts` DSL parsing) — ojo only reads already-resolved dependency data.
 
