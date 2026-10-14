@@ -29,7 +29,6 @@ ojo is young. This page is the honest, unvarnished list of what it doesn't do ye
 ## Vulnerability data
 
 - **No local database.** Every scan queries the live [OSV.dev](https://osv.dev) API — no offline/air-gapped mode. (`-f sbom --no-license-lookup` is the one fully offline operation.)
-- **Fixed-version resolution** uses a generic, approximate version comparator, not each ecosystem's exact comparison rules (dpkg epoch/tilde semantics, real semver, PEP 440).
 - **Ubuntu LTS detection** is a release-history heuristic (even year, April release), not derived from an authoritative source.
 - `--kev` cross-references findings against CISA's Known Exploited Vulnerabilities catalog (annotation only, doesn't affect exit code).
 
