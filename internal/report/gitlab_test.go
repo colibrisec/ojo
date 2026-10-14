@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/colibrisec/ojo/internal/model"
@@ -120,5 +121,46 @@ func TestGitLabDependencyScanningSamePackageInTwoFiles(t *testing.T) {
 	}
 	if a.ID == b.ID {
 		t.Errorf("both entries share id %q", a.ID)
+	}
+}
+
+func TestGitLabCodeQuality(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "repo")
+	r := Report{Issues: []model.Issue{
+		{Scanner: "quality", RuleID: "quality-cyclomatic-complexity", Severity: "MEDIUM", File: filepath.Join(root, "src", "a.py"), Line: 7, Message: "f is too complex"},
+		{Scanner: "quality", RuleID: "quality-todo-comment", Severity: "INFO", File: filepath.Join(root, "src", "a.py"), Line: 9, Message: "TODO"},
+		{Scanner: "sast", RuleID: "py-eval-detected", Severity: "HIGH", File: filepath.Join(root, "src", "a.py"), Line: 3, Message: "eval"},
+	}}
+
+	var buf bytes.Buffer
+	if err := r.GitLabCodeQuality(&buf, root); err != nil {
+		t.Fatal(err)
+	}
+	var got []glCodeQualityIssue
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected only the 2 quality issues, got %+v", got)
+	}
+	first := got[0]
+	if first.CheckName != "quality-cyclomatic-complexity" || first.Severity != "major" || first.Location.Path != "src/a.py" || first.Location.Lines.Begin != 7 || first.Description != "f is too complex" {
+		t.Errorf("unexpected issue: %+v", first)
+	}
+	if got[1].Severity != "info" {
+		t.Errorf("expected INFO to map to info, got %q", got[1].Severity)
+	}
+	if first.Fingerprint == "" || first.Fingerprint == got[1].Fingerprint {
+		t.Errorf("expected distinct non-empty fingerprints, got %q and %q", first.Fingerprint, got[1].Fingerprint)
+	}
+}
+
+func TestGitLabCodeQualityEmptyIsAnArray(t *testing.T) {
+	var buf bytes.Buffer
+	if err := (Report{}).GitLabCodeQuality(&buf, "."); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(buf.String()); got != "[]" {
+		t.Errorf("expected an empty JSON array, got %q", got)
 	}
 }

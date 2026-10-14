@@ -21,7 +21,7 @@ func TestScanGo(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	issues, err := scanGo(dir)
+	issues, err := scanGo(dir, DefaultThresholds)
 	if err != nil {
 		t.Fatal(err)
 	}

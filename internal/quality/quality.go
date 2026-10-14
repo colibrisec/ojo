@@ -15,12 +15,21 @@ import (
 	"github.com/colibrisec/ojo/internal/model"
 )
 
-const (
-	maxFunctionLines = 50
-	maxParameters    = 5
-	maxNestingDepth  = 4
-	maxComplexity    = 10
-)
+type Thresholds struct {
+	FunctionLines  int
+	Parameters     int
+	NestingDepth   int
+	Complexity     int
+	DuplicateLines int
+}
+
+var DefaultThresholds = Thresholds{
+	FunctionLines:  50,
+	Parameters:     5,
+	NestingDepth:   4,
+	Complexity:     10,
+	DuplicateLines: 6,
+}
 
 // funcMetrics holds the four per-function measurements for one function/
 // method/lambda/closure, regardless of source language.
@@ -34,28 +43,28 @@ type funcMetrics struct {
 	complexity int // McCabe: 1 + decision points
 }
 
-func (m funcMetrics) issues() []model.Issue {
+func (m funcMetrics) issues(th Thresholds) []model.Issue {
 	var issues []model.Issue
 	length := m.endLine - m.startLine + 1
-	if length > maxFunctionLines {
+	if length > th.FunctionLines {
 		issues = append(issues, newIssue("quality-function-length", "LOW", m.file, m.startLine,
 			"Function too long",
-			fmt.Sprintf("%s is %d lines long (threshold: %d) — consider splitting it up", m.name, length, maxFunctionLines)))
+			fmt.Sprintf("%s is %d lines long (threshold: %d) — consider splitting it up", m.name, length, th.FunctionLines)))
 	}
-	if m.params > maxParameters {
+	if m.params > th.Parameters {
 		issues = append(issues, newIssue("quality-parameter-count", "LOW", m.file, m.startLine,
 			"Too many parameters",
-			fmt.Sprintf("%s takes %d parameters (threshold: %d) — consider grouping related parameters into a struct/object", m.name, m.params, maxParameters)))
+			fmt.Sprintf("%s takes %d parameters (threshold: %d) — consider grouping related parameters into a struct/object", m.name, m.params, th.Parameters)))
 	}
-	if m.nesting > maxNestingDepth {
+	if m.nesting > th.NestingDepth {
 		issues = append(issues, newIssue("quality-nesting-depth", "LOW", m.file, m.startLine,
 			"Deeply nested code",
-			fmt.Sprintf("%s nests %d levels of control flow deep (threshold: %d) — consider extracting inner blocks into their own functions or using early returns", m.name, m.nesting, maxNestingDepth)))
+			fmt.Sprintf("%s nests %d levels of control flow deep (threshold: %d) — consider extracting inner blocks into their own functions or using early returns", m.name, m.nesting, th.NestingDepth)))
 	}
-	if m.complexity > maxComplexity {
+	if m.complexity > th.Complexity {
 		issues = append(issues, newIssue("quality-cyclomatic-complexity", "MEDIUM", m.file, m.startLine,
 			"High cyclomatic complexity",
-			fmt.Sprintf("%s has a cyclomatic complexity of %d (threshold: %d) — consider splitting it into smaller functions", m.name, m.complexity, maxComplexity)))
+			fmt.Sprintf("%s has a cyclomatic complexity of %d (threshold: %d) — consider splitting it into smaller functions", m.name, m.complexity, th.Complexity)))
 	}
 	return issues
 }
@@ -74,21 +83,21 @@ func newIssue(id, severity, file string, line int, title, message string) model.
 
 // Scan runs every quality metric — the four per-function AST metrics
 // across all six languages, plus cross-file duplicate detection — against
-// every source file under root.
-func Scan(root string) ([]model.Issue, error) {
+// every source file under root, checked against th.
+func Scan(root string, th Thresholds) ([]model.Issue, error) {
 	var issues []model.Issue
 
-	for _, scan := range []func(string) ([]model.Issue, error){
+	for _, scan := range []func(string, Thresholds) ([]model.Issue, error){
 		scanGo, scanPython, scanJS, scanPHP, scanRuby, scanJava,
 	} {
-		found, err := scan(root)
+		found, err := scan(root, th)
 		if err != nil {
 			return nil, err
 		}
 		issues = append(issues, found...)
 	}
 
-	dupIssues, err := scanDuplicates(root)
+	dupIssues, err := scanDuplicates(root, th.DuplicateLines)
 	if err != nil {
 		return nil, err
 	}

@@ -15,6 +15,7 @@ format: sarif
 |---|---|---|
 | `scanners` | `--scanners` | `ojo fs` only |
 | `format` | `-f`/`--format` | `ojo fs` and `ojo image` |
+| `quality` | — | `ojo fs`; the quality scanner's thresholds, see [Code Quality](scanner/quality.md#rules) |
 
 **Precedence:** an explicit flag always wins, then the config file, then the built-in default (`vuln` / `table`).
 
@@ -67,7 +68,7 @@ $ ojo fs --scanners vuln,secret,misconfig,sast,quality .
 | `sast` | [SAST](scanner/sast.md) | ❌ |
 | `quality` | [Code Quality](scanner/quality.md) | ❌ |
 
-Default: `vuln`. An unknown value is an error. `-g`/`--gitlab` overrides this and runs `vuln,secret,misconfig,sast`. `ojo image` doesn't take `--scanners` — it always runs the vulnerability scanner against the image's OS and Node.js packages.
+Default: `vuln`. An unknown value is an error. `-g`/`--gitlab` overrides this and runs `vuln,secret,misconfig,sast`, plus `quality` if you asked for it. `ojo image` doesn't take `--scanners` — it always runs the vulnerability scanner against the image's OS and Node.js packages.
 
 ## `-f` / `--format`
 

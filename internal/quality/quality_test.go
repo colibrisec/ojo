@@ -41,7 +41,7 @@ func TestScan(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	issues, err := Scan(dir)
+	issues, err := Scan(dir, DefaultThresholds)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -27,7 +27,7 @@ var javaSpec = tsLangSpec{
 	caseLabelType: "switch_label",
 }
 
-func scanJava(root string) ([]model.Issue, error) {
+func scanJava(root string, th Thresholds) ([]model.Issue, error) {
 	var issues []model.Issue
 	err := walk.Walk(root, func(path string, d fs.DirEntry) error {
 		if !strings.HasSuffix(path, ".java") {
@@ -42,7 +42,7 @@ func scanJava(root string) ([]model.Issue, error) {
 			return nil // ponytail: skip files that don't parse, don't fail the whole scan
 		}
 		for _, m := range tsMeasureFuncs(tree.RootNode(), javaLang, javaSpec, src, path) {
-			issues = append(issues, m.issues()...)
+			issues = append(issues, m.issues(th)...)
 		}
 		return nil
 	})

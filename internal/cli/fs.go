@@ -59,6 +59,7 @@ func fsCmd() *cobra.Command {
 			if cfg.Scanners != "" && !cmd.Flags().Changed("scanners") {
 				scanners = cfg.Scanners
 			}
+			qualityThresholds := qualityThresholdsFrom(cfg.Quality)
 
 			if respectGitignore {
 				walk.RespectGitignore(root)
@@ -78,8 +79,17 @@ func fsCmd() *cobra.Command {
 				return report.SBOM(cmd.OutOrStdout(), withLicenses(cmd, pkgs, noLicenseLookup), sbomVersion)
 			}
 
+			runQuality := false
+			for _, s := range strings.Split(scanners, ",") {
+				if strings.TrimSpace(s) == "quality" {
+					runQuality = true
+				}
+			}
 			if gitlab {
 				scanners = "vuln,secret,misconfig,sast"
+				if runQuality {
+					scanners += ",quality"
+				}
 			}
 
 			rulesDirPath := rulesDir
@@ -160,7 +170,7 @@ func fsCmd() *cobra.Command {
 					rep.Issues = append(rep.Issues, customIssues...)
 				case "quality":
 					fmt.Fprintln(cmd.ErrOrStderr(), "Running quality scan...")
-					issues, err := quality.Scan(root)
+					issues, err := quality.Scan(root, qualityThresholds)
 					if err != nil {
 						return fmt.Errorf("running quality: %w", err)
 					}
@@ -195,6 +205,12 @@ func fsCmd() *cobra.Command {
 					{"gl-sast-report.json", func(w io.Writer) error { return rep.GitLabSAST(w, root, Version) }},
 					{"gl-secret-detection-report.json", func(w io.Writer) error { return rep.GitLabSecretDetection(w, root, Version) }},
 					{"gl-sbom-report.cdx.json", func(w io.Writer) error { return report.SBOM(w, pkgs, sbomVersion) }},
+				}
+				if runQuality {
+					files = append(files, struct {
+						name  string
+						write func(io.Writer) error
+					}{"gl-code-quality-report.json", func(w io.Writer) error { return rep.GitLabCodeQuality(w, root) }})
 				}
 				for _, f := range files {
 					out, err := os.Create(f.name)
@@ -238,7 +254,7 @@ func fsCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, sbom, sarif, vex")
 	cmd.Flags().StringVar(&scanners, "scanners", "vuln", "comma-separated scanners to run: vuln, secret, misconfig, sast, quality")
 	cmd.Flags().StringVar(&configPath, "config", "", "path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)")
-	cmd.Flags().BoolVarP(&gitlab, "gitlab", "g", false, "write GitLab-compatible security reports (gl-dependency-scanning-report.json, gl-sast-report.json, gl-secret-detection-report.json, gl-sbom-report.cdx.json) instead of -f/--format output; runs the vuln, secret, misconfig, and sast scanners")
+	cmd.Flags().BoolVarP(&gitlab, "gitlab", "g", false, "write GitLab-compatible security reports (gl-dependency-scanning-report.json, gl-sast-report.json, gl-secret-detection-report.json, gl-sbom-report.cdx.json) instead of -f/--format output; runs the vuln, secret, misconfig, and sast scanners, plus quality (and gl-code-quality-report.json) when --scanners or .ojo.yaml includes it")
 	cmd.Flags().StringVar(&rulesDir, "rules-dir", "", "directory of custom *.yaml SAST rules (default: <path>/.ojo/rules, if present); runs alongside --scanners sast")
 	cmd.Flags().StringVar(&ignoreFile, "ignore-file", "", "path to a .ojoignore file (default: .ojoignore in the current directory, if present)")
 	cmd.Flags().StringVar(&cyclonedxVersion, "cyclonedx-version", "", "CycloneDX spec version for -f sbom output, e.g. 1.4 (default: latest)")
@@ -250,4 +266,23 @@ func fsCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&noLicenseLookup, "no-license-lookup", false, noLicenseLookupUsage)
 	cmd.Flags().StringVar(&vexFile, "vex-file", "", "path to an OpenVEX document; suppresses findings its not_affected/fixed statements cover (matched by product purl and CVE/alias)")
 	return cmd
+}
+
+func qualityThresholdsFrom(q config.Quality) quality.Thresholds {
+	th := quality.DefaultThresholds
+	for _, o := range []struct {
+		from int
+		to   *int
+	}{
+		{q.MaxFunctionLines, &th.FunctionLines},
+		{q.MaxParameters, &th.Parameters},
+		{q.MaxNestingDepth, &th.NestingDepth},
+		{q.MaxComplexity, &th.Complexity},
+		{q.MinDuplicateLines, &th.DuplicateLines},
+	} {
+		if o.from != 0 {
+			*o.to = o.from
+		}
+	}
+	return th
 }

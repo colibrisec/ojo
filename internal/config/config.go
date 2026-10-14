@@ -13,8 +13,18 @@ import (
 
 // Config mirrors a subset of ojo's CLI flags for use as per-repo defaults.
 type Config struct {
-	Scanners string `yaml:"scanners"`
-	Format   string `yaml:"format"`
+	Scanners string  `yaml:"scanners"`
+	Format   string  `yaml:"format"`
+	Quality  Quality `yaml:"quality"`
+}
+
+// Quality overrides quality thresholds; zero keeps the default.
+type Quality struct {
+	MaxFunctionLines  int `yaml:"max-function-lines"`
+	MaxParameters     int `yaml:"max-parameters"`
+	MaxNestingDepth   int `yaml:"max-nesting-depth"`
+	MaxComplexity     int `yaml:"max-complexity"`
+	MinDuplicateLines int `yaml:"min-duplicate-lines"`
 }
 
 // Load reads explicitPath, or ".ojo.yaml" in the current directory if
@@ -39,6 +49,20 @@ func Load(explicitPath string) (*Config, error) {
 	dec.KnownFields(true)
 	if err := dec.Decode(&c); err != nil && !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
+	}
+	for _, f := range []struct {
+		name  string
+		value int
+	}{
+		{"max-function-lines", c.Quality.MaxFunctionLines},
+		{"max-parameters", c.Quality.MaxParameters},
+		{"max-nesting-depth", c.Quality.MaxNestingDepth},
+		{"max-complexity", c.Quality.MaxComplexity},
+		{"min-duplicate-lines", c.Quality.MinDuplicateLines},
+	} {
+		if f.value < 0 {
+			return nil, fmt.Errorf("parsing %s: quality.%s must be positive, got %d", path, f.name, f.value)
+		}
 	}
 	return &c, nil
 }

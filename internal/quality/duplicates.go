@@ -22,8 +22,7 @@ import (
 // specific to this metric.
 
 const (
-	dupWindowLines = 6  // minimum block size considered, in significant (non-blank) lines
-	dupMinChars    = 30 // minimum non-whitespace characters in a window — filters trivial matches like runs of "}"
+	dupMinChars = 30 // minimum non-whitespace characters in a window — filters trivial matches like runs of "}"
 )
 
 var dupExtensions = map[string]bool{
@@ -47,7 +46,7 @@ type dupWindowRef struct {
 	start int       // index into lines
 }
 
-func scanDuplicates(root string) ([]model.Issue, error) {
+func scanDuplicates(root string, window int) ([]model.Issue, error) {
 	files := map[string][]dupLine{}
 	err := walk.Walk(root, func(path string, d fs.DirEntry) error {
 		if !dupExtensions[filepath.Ext(path)] {
@@ -65,7 +64,7 @@ func scanDuplicates(root string) ([]model.Issue, error) {
 			}
 			lines = append(lines, dupLine{text: t, line: i + 1})
 		}
-		if len(lines) >= dupWindowLines {
+		if len(lines) >= window {
 			files[path] = lines
 		}
 		return nil
@@ -76,9 +75,8 @@ func scanDuplicates(root string) ([]model.Issue, error) {
 
 	buckets := map[string][]dupWindowRef{}
 	for file, lines := range files {
-		for start := 0; start+dupWindowLines <= len(lines); start++ {
-			window := lines[start : start+dupWindowLines]
-			joined := joinDupLines(window)
+		for start := 0; start+window <= len(lines); start++ {
+			joined := joinDupLines(lines[start : start+window])
 			if nonSpaceLen(joined) < dupMinChars {
 				continue
 			}
@@ -115,7 +113,7 @@ func scanDuplicates(root string) ([]model.Issue, error) {
 			continue
 		}
 
-		blockLen := dupWindowLines + extendMatch(kept)
+		blockLen := window + extendMatch(kept, window)
 		locs := make([]string, len(kept))
 		for i, r := range kept {
 			locs[i] = fmt.Sprintf("%s:%d", r.file, r.lines[r.start].line)
@@ -137,11 +135,11 @@ func scanDuplicates(root string) ([]model.Issue, error) {
 // every ref in refs keeps matching in lock-step — the minimum across all
 // refs, so every occurrence reported for this group shares one common,
 // fully-verified duplicate length.
-func extendMatch(refs []dupWindowRef) int {
+func extendMatch(refs []dupWindowRef, window int) int {
 	anchor := refs[0]
 	extra := 0
 	for {
-		next := dupWindowLines + extra
+		next := window + extra
 		anchorIdx := anchor.start + next
 		if anchorIdx >= len(anchor.lines) {
 			return extra

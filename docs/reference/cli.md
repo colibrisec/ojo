@@ -60,7 +60,7 @@ Flags:
       --config string              path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)
       --cyclonedx-version string   CycloneDX spec version for -f sbom output, e.g. 1.4 (default: latest)
   -f, --format string              output format: table, json, sbom, sarif, vex (default "table")
-  -g, --gitlab                     write GitLab-compatible security reports (gl-dependency-scanning-report.json, gl-sast-report.json, gl-secret-detection-report.json, gl-sbom-report.cdx.json) instead of -f/--format output; runs the vuln, secret, misconfig, and sast scanners
+  -g, --gitlab                     write GitLab-compatible security reports (gl-dependency-scanning-report.json, gl-sast-report.json, gl-secret-detection-report.json, gl-sbom-report.cdx.json) instead of -f/--format output; runs the vuln, secret, misconfig, and sast scanners, plus quality (and gl-code-quality-report.json) when --scanners or .ojo.yaml includes it
   -h, --help                       help for fs
       --ignore-file string         path to a .ojoignore file (default: .ojoignore in the current directory, if present)
       --kev                        flag findings whose CVE is in CISA's Known Exploited Vulnerabilities catalog (confirmed real-world exploitation); annotation only, doesn't affect exit code
@@ -82,7 +82,7 @@ Selects the CycloneDX spec version for `-f sbom` output (and `-g`'s `gl-sbom-rep
 
 ### `--scanners quality`
 
-Maintainability smells (complexity, length, nesting, parameter count, duplicate code) — not security findings. Off by default, opt in with `--scanners quality` (combine with others, e.g. `--scanners vuln,quality`). See [Code Quality scanner](../guide/scanner/quality.md) for the full rule list and thresholds. Not included in `-g/--gitlab`'s report set — no GitLab Code Quality (`gl-code-quality-report.json`) writer yet.
+Maintainability smells (complexity, length, nesting, parameter count, duplicate code) — not security findings. Off by default, opt in with `--scanners quality` (combine with others, e.g. `--scanners vuln,quality`). See [Code Quality scanner](../guide/scanner/quality.md) for the full rule list and thresholds, which `.ojo.yaml` can override. With `-g/--gitlab`, its findings go to `gl-code-quality-report.json`.
 
 ### `--no-license-lookup`
 
@@ -129,14 +129,15 @@ Suppresses findings/issues matched by a `--ignore-file` (default `.ojoignore` in
 
 ### `-g/--gitlab`
 
-Writes four report files to the current directory instead of printing `-f/--format` output, for GitLab CI's [Security Dashboard](https://docs.gitlab.com/ee/user/application_security/security_dashboard/):
+Writes four report files (five with `quality`) to the current directory instead of printing `-f/--format` output, for GitLab CI's [Security Dashboard](https://docs.gitlab.com/ee/user/application_security/security_dashboard/):
 
 - `gl-dependency-scanning-report.json` — `vuln` scanner findings
 - `gl-sast-report.json` — `sast` and `misconfig` scanner issues (GitLab's own IaC analyzers report under the `sast` category too)
 - `gl-secret-detection-report.json` — `secret` scanner issues
 - `gl-sbom-report.cdx.json` — CycloneDX SBOM of discovered packages
+- `gl-code-quality-report.json` — `quality` scanner issues, only when `quality` is in `--scanners` or `.ojo.yaml`
 
-`-g` runs the `vuln`, `secret`, `misconfig`, and `sast` scanners regardless of `--scanners` (`quality` isn't included — see above). `.ojoignore` and `--vex-file` suppressions apply to the reports, and `--cyclonedx-version` to the SBOM. Wire the files up as `artifacts:reports:` entries in `.gitlab-ci.yml` (`dependency_scanning`, `sast`, `secret_detection`, `cyclonedx`) so GitLab ingests them into the Security Dashboard.
+`-g` runs the `vuln`, `secret`, `misconfig`, and `sast` scanners regardless of `--scanners`, adding `quality` only if `--scanners` (or `.ojo.yaml`) asks for it, so existing pipelines don't start failing on code-quality findings. `.ojoignore` and `--vex-file` suppressions apply to the reports, and `--cyclonedx-version` to the SBOM. Wire the files up as `artifacts:reports:` entries in `.gitlab-ci.yml` (`dependency_scanning`, `sast`, `secret_detection`, `cyclonedx`, and `codequality`) so GitLab ingests them into the Security Dashboard.
 
 ## `ojo image`
 

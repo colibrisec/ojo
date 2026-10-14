@@ -239,3 +239,58 @@ func (r Report) GitLabDependencyScanning(w io.Writer, root, toolVersion string) 
 	enc.SetIndent("", "  ")
 	return enc.Encode(rep)
 }
+
+// --- Code Quality (CodeClimate subset) ---
+
+type glCodeQualityIssue struct {
+	Description string           `json:"description"`
+	CheckName   string           `json:"check_name"`
+	Fingerprint string           `json:"fingerprint"`
+	Severity    string           `json:"severity"`
+	Location    glCodeQualityLoc `json:"location"`
+}
+
+type glCodeQualityLoc struct {
+	Path  string             `json:"path"`
+	Lines glCodeQualityLines `json:"lines"`
+}
+
+type glCodeQualityLines struct {
+	Begin int `json:"begin"`
+}
+
+func codeQualitySeverity(sev string) string {
+	switch sev {
+	case "CRITICAL":
+		return "blocker"
+	case "HIGH":
+		return "critical"
+	case "MEDIUM", "MODERATE":
+		return "major"
+	case "LOW":
+		return "minor"
+	default:
+		return "info"
+	}
+}
+
+// GitLabCodeQuality writes a GitLab Code Quality report (gl-code-quality-report.json).
+func (r Report) GitLabCodeQuality(w io.Writer, root string) error {
+	issues := []glCodeQualityIssue{}
+	for _, iss := range r.Issues {
+		if iss.Scanner != "quality" {
+			continue
+		}
+		file := filepath.ToSlash(relPath(root, iss.File))
+		issues = append(issues, glCodeQualityIssue{
+			Description: iss.Message,
+			CheckName:   iss.RuleID,
+			Fingerprint: fingerprint("code_quality", file, fmt.Sprint(iss.Line), iss.RuleID, iss.Message),
+			Severity:    codeQualitySeverity(iss.Severity),
+			Location:    glCodeQualityLoc{Path: file, Lines: glCodeQualityLines{Begin: iss.Line}},
+		})
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(issues)
+}
