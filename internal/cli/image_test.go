@@ -94,12 +94,12 @@ func TestImageCmd_ImageScanErrorPropagates(t *testing.T) {
 }
 
 func TestImageCmd_SBOMFormat(t *testing.T) {
-	stubImageScan(t, []model.Package{{Name: "musl", Version: "1.2.3", Ecosystem: model.EcosystemGo}}, "alpine 3.19", nil)
+	stubImageScan(t, []model.Package{{Name: "musl", Version: "1.2.3-r0", Ecosystem: "Alpine:v3.19", Source: "apk"}}, "alpine 3.19", nil)
 	out, err := runImage(t, "-f", "sbom", "alpine:latest")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if !strings.Contains(out, "pkg:golang/musl@1.2.3") {
+	if !strings.Contains(out, "pkg:apk/alpine/musl@1.2.3-r0?distro=alpine-3.19") {
 		t.Errorf("got %q", out)
 	}
 }

@@ -1,21 +1,38 @@
 # SBOM
 
-Every command supports `-f sbom` to emit a [CycloneDX](https://cyclonedx.org/) 1.7 JSON Software Bill of Materials of the packages it discovered, instead of running the vulnerability scanner.
+Every command supports `-f sbom` to emit a [CycloneDX](https://cyclonedx.org/) 1.7 JSON Software Bill of Materials of the packages it discovered, and `-f spdx` for an [SPDX](https://spdx.dev) 2.3 JSON one, instead of running the vulnerability scanner.
 
 ```console
-$ ojo fs -f sbom . > sbom.json
-$ ojo image -f sbom python:3.14-slim > sbom.json
+$ ojo fs -f sbom . > sbom.cdx.json
+$ ojo image -f spdx python:3.14-slim > sbom.spdx.json
 ```
 
-Each component includes a [package URL (purl)](https://github.com/package-url/purl-spec) built from the package's name, version, and ecosystem:
+To scan an SBOM, ojo's or another tool's, see [SBOM target](target/sbom.md).
 
-| Ecosystem | purl type |
+Each package includes a [package URL (purl)](https://github.com/package-url/purl-spec) built from its name, version, and ecosystem:
+
+| Ecosystem | purl |
 |---|---|
-| Go | `pkg:golang/...` |
-| npm | `pkg:npm/...` |
-| PyPI | `pkg:pypi/...` |
-| CocoaPods | `pkg:cocoapods/...` |
-| everything else (OS packages, etc.) | `pkg:generic/...` |
+| Go | `pkg:golang/github.com/pkg/errors@v0.9.1` |
+| npm | `pkg:npm/%40babel/core@7.0.0` |
+| PyPI | `pkg:pypi/django@3.2.0` |
+| Maven | `pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1` |
+| crates.io, RubyGems, NuGet, Pub | `pkg:cargo/...`, `pkg:gem/...`, `pkg:nuget/...`, `pkg:pub/...` |
+| Packagist | `pkg:composer/laravel/framework@8.0.0` |
+| SwiftURL | `pkg:swift/github.com/apple/swift-nio@2.0.0` |
+| CocoaPods | `pkg:cocoapods/GoogleUtilities@7.5.2#NSData%2Bzlib` (subspec as subpath) |
+| Debian, Ubuntu | `pkg:deb/debian/libssl3@3.0.11-1~deb12u2?distro=debian-12&upstream=openssl` |
+| Alpine | `pkg:apk/alpine/libcrypto3@3.1.4-r5?distro=alpine-3.19&upstream=openssl` |
+| RHEL, Rocky, AlmaLinux, Amazon Linux | `pkg:rpm/redhat/openssl-libs@3.0.7-25.el9_3?distro=rhel-9&epoch=1&upstream=openssl` |
+
+OS packages carry their source package as `upstream` when it differs from the binary package name, and an rpm epoch as `epoch`, the same convention syft uses, so the SBOM can be scanned later with nothing lost.
+
+!!! note "Changed purls"
+    Before ojo listed every ecosystem in this table, everything but Go, npm, PyPI and CocoaPods was written as `pkg:generic/...`, and Go versions had no `v` prefix. A VEX document whose products were written against those old purls needs updating, since `--vex-file` matches purls exactly.
+
+## SPDX
+
+`-f spdx` writes an SPDX 2.3 JSON document: one package per distinct package, each with its purl as a `PACKAGE-MANAGER` external reference and its license as `licenseDeclared`. A license name SPDX doesn't recognise (a distribution's own short name such as `GPLv2+`) is written as a `LicenseRef-` with the original text in `hasExtractedLicensingInfos`. `--cyclonedx-version` doesn't apply.
 
 ## Spec version
 

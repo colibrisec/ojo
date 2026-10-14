@@ -29,7 +29,7 @@ func TestScanDuplicatesFindsRealDuplicateBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	issues, err := scanDuplicates(dir)
+	issues, err := scanDuplicates(dir, DefaultThresholds.DuplicateLines)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestScanDuplicatesIgnoresTrivialRepeatedLines(t *testing.T) {
 	// Six lines of "}" repeats across two files — same shape as a real
 	// duplicate window, but each window's non-whitespace content is well
 	// under dupMinChars, so it must not fire.
-	trivial := strings.Repeat("}\n", dupWindowLines+2)
+	trivial := strings.Repeat("}\n", DefaultThresholds.DuplicateLines+2)
 
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte(trivial), 0o644); err != nil {
@@ -57,7 +57,7 @@ func TestScanDuplicatesIgnoresTrivialRepeatedLines(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	issues, err := scanDuplicates(dir)
+	issues, err := scanDuplicates(dir, DefaultThresholds.DuplicateLines)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,11 +75,32 @@ func TestScanDuplicatesNoFalsePositiveOnDistinctFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	issues, err := scanDuplicates(dir)
+	issues, err := scanDuplicates(dir, DefaultThresholds.DuplicateLines)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(issues) != 0 {
 		t.Errorf("expected no issues for distinct short files, got %d: %+v", len(issues), issues)
+	}
+}
+
+func TestScanDuplicatesHonoursWindow(t *testing.T) {
+	block := "alpha := computeSomething(1)\nbeta := computeSomething(2)\ngamma := computeSomething(3)\ndelta := computeSomething(4)\n"
+	dir := t.TempDir()
+	for _, name := range []string{"a.go", "b.go"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(block), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if issues, err := scanDuplicates(dir, DefaultThresholds.DuplicateLines); err != nil || len(issues) != 0 {
+		t.Errorf("a 4-line block should be below the default window, got %v, %+v", err, issues)
+	}
+	issues, err := scanDuplicates(dir, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(issues) != 2 {
+		t.Errorf("expected both copies reported with a 4-line window, got %+v", issues)
 	}
 }

@@ -8,7 +8,7 @@ What ojo can actually scan today.
 |---|---|---|
 | Go | `go.mod` | ✅ |
 | npm | `package-lock.json` (v1 and v2/v3), `yarn.lock` (classic and Berry), `pnpm-lock.yaml` (v5–v9) | ✅ |
-| PyPI | `requirements.txt` (pinned `==` only), `Pipfile.lock`, `poetry.lock`, `uv.lock`, `pdm.lock` | ✅ |
+| PyPI | `requirements*.txt` (exact `==`/`===` pins only), `Pipfile.lock`, `poetry.lock`, `uv.lock`, `pdm.lock` | ✅ |
 | Maven | `pom.xml` (literal + same-file `${property}` versions only), `gradle.lockfile` | ✅ |
 | Packagist (PHP) | `composer.lock` | ✅ |
 | NuGet (.NET) | `packages.lock.json` (opt-in file) | ✅ |
@@ -76,14 +76,16 @@ Same six languages as the SAST scanner, all four AST metrics (complexity/length/
 
 ## Output formats
 
-| Format | `ojo fs` | `ojo image` |
-|---|---|---|
-| `table`, `json` | ✅ | ✅ |
-| `sarif` (SARIF 2.1.0) | ✅ | ✅ |
-| `sbom` (CycloneDX JSON, 1.2–1.7, with package licenses) | ✅ | ✅ |
-| `vex` (OpenVEX) | ✅ | ✅ |
-| GitLab security reports (`-g`) | ✅ | ❌ |
-| SPDX | ❌ | ❌ |
+| Format | `ojo fs` | `ojo image` | `ojo sbom` |
+|---|---|---|---|
+| `table`, `json` | ✅ | ✅ | ✅ |
+| `sarif` (SARIF 2.1.0) | ✅ | ✅ | ✅ |
+| `sbom` (CycloneDX JSON, 1.2–1.7, with package licenses) | ✅ | ✅ | ✅ |
+| `spdx` (SPDX 2.3 JSON) | ✅ | ✅ | ✅ |
+| `vex` (OpenVEX) | ✅ | ✅ | ✅ |
+| GitLab security reports (`-g`) | ✅ | ❌ | ❌ |
+
+`ojo sbom` reads CycloneDX (JSON or XML) and SPDX 2.x JSON; see [SBOM target](../guide/target/sbom.md).
 
 ## Vulnerability data source
 

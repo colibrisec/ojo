@@ -43,7 +43,7 @@ func jsLangForPath(path string) *gts.Language {
 	}
 }
 
-func scanJS(root string) ([]model.Issue, error) {
+func scanJS(root string, th Thresholds) ([]model.Issue, error) {
 	var issues []model.Issue
 	err := walk.Walk(root, func(path string, d fs.DirEntry) error {
 		lang := jsLangForPath(path)
@@ -59,7 +59,7 @@ func scanJS(root string) ([]model.Issue, error) {
 			return nil // ponytail: skip files that don't parse, don't fail the whole scan
 		}
 		for _, m := range tsMeasureFuncs(tree.RootNode(), lang, jsSpec, src, path) {
-			issues = append(issues, m.issues()...)
+			issues = append(issues, m.issues(th)...)
 		}
 		return nil
 	})

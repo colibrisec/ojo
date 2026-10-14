@@ -19,7 +19,18 @@ This is a genuinely different problem shape from the [SAST scanner](sast.md) and
 | `quality-duplicate-code` | MEDIUM | 6 significant lines, ≥30 non-whitespace chars | A block of code that also appears elsewhere in the scanned tree |
 | `quality-todo-comment` | INFO | n/a | A comment containing `TODO`/`FIXME`/`HACK`/`XXX` (SonarQube's own S1135/S1134, generalized to the four markers real codebases actually use) |
 
-None of the thresholds are currently configurable — hardcoded, documented here. Configurability (per-project `.ojo.yaml` overrides) is a natural follow-up, not built yet.
+The thresholds in the table are defaults. Override any of them in `.ojo.yaml` (a key you leave out keeps its default):
+
+```yaml
+quality:
+  max-function-lines: 80
+  max-parameters: 6
+  max-nesting-depth: 4
+  max-complexity: 15
+  min-duplicate-lines: 10
+```
+
+A function is flagged when it goes over a `max-*` value; a duplicate block must span at least `min-duplicate-lines` significant lines. Values must be positive, and an unknown key is an error.
 
 ## The four AST metrics
 
@@ -48,5 +59,5 @@ Matched against real *comment* node text only, not a raw regex over the whole fi
 - **A Ruby method with an empty body has no body node at all** — `def f(x)\nend` doesn't construct a `body_statement` node the way a non-empty body does. Handled by treating a missing body as zero decision points/nesting rather than crashing; the function's own span is still used for length. Verified directly (an early version of the fixture used to design this caught it).
 - **Parameter counting is best-effort for single-argument lambdas without parentheses** (e.g. Ruby's `->(x) { x }` parses fine, but some grammars' single-unparenthesized-parameter forms may not expose the same `parameters` field shape) — low practical impact, since undercounting a 1-parameter lambda to 0 never crosses the 5-parameter threshold anyway.
 - **Duplicate detection is textual, not semantic.** Renaming a variable, reordering independent statements, or reformatting breaks the match — this finds copy-paste duplicates, not refactoring opportunities a human reviewer would recognize as "the same logic." That's the deliberate tradeoff for staying language-agnostic and dependency-free; a genuine semantic-clone detector is a different, much larger feature.
-- **No GitLab Code Quality report.** `-g/--gitlab` writes four GitLab security report formats (dependency scanning, SAST, secret detection, SBOM) but not GitLab's separate CodeClimate-compatible `gl-code-quality-report.json` format — `quality` findings currently only reach GitLab via the generic JSON/SARIF/table outputs, not a dedicated CI integration. A natural follow-up, not built yet.
+- **GitLab Code Quality** needs opting in: `-g/--gitlab` only runs this scanner and writes `gl-code-quality-report.json` when `quality` is in `--scanners` or `.ojo.yaml` (see [CLI Reference](../../reference/cli.md#-g-gitlab)).
 - **Magic-number detection (SonarQube's S109) was considered for this round and deliberately declined, not silently skipped.** Even Sonar's own S109 is widely disabled in real projects because the noise-to-signal ratio is bad without careful scoping: loop bounds, array indices, and HTTP status codes are all "magic numbers" by the literal rule definition but aren't bugs, and getting the exclusion list right (declaration-initializer values, loop headers, index expressions) needs its own accuracy-focused pass across five different grammars' expression shapes — the same bar every SAST rule in this codebase is held to before shipping. Unused-variable/import detection has the same story for a different reason: it needs real scope resolution (which names are declared vs. referenced, without false-positiving on shadowing or per-language "intentionally unused" conventions like Python's `_`) rather than the syntax-only pattern matching every check in this file relies on, and Go's compiler already rejects unused locals at build time regardless. Both are real candidates for a future round once scoped properly — not ruled out, just not rushed.

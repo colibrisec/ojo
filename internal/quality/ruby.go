@@ -28,7 +28,7 @@ var rubySpec = tsLangSpec{
 	logicalOps:  map[string]bool{"&&": true, "||": true, "and": true, "or": true},
 }
 
-func scanRuby(root string) ([]model.Issue, error) {
+func scanRuby(root string, th Thresholds) ([]model.Issue, error) {
 	var issues []model.Issue
 	err := walk.Walk(root, func(path string, d fs.DirEntry) error {
 		if !strings.HasSuffix(path, ".rb") {
@@ -43,7 +43,7 @@ func scanRuby(root string) ([]model.Issue, error) {
 			return nil // ponytail: skip files that don't parse, don't fail the whole scan
 		}
 		for _, m := range tsMeasureFuncs(tree.RootNode(), rubyLang, rubySpec, src, path) {
-			issues = append(issues, m.issues()...)
+			issues = append(issues, m.issues(th)...)
 		}
 		return nil
 	})

@@ -60,6 +60,9 @@ func imageCmd() *cobra.Command {
 			if format == "sbom" {
 				return report.SBOM(cmd.OutOrStdout(), withLicenses(cmd, pkgs, noLicenseLookup), sbomVersion)
 			}
+			if format == "spdx" {
+				return report.SPDX(cmd.OutOrStdout(), withLicenses(cmd, pkgs, noLicenseLookup), ref, Version, time.Now())
+			}
 
 			if distro := image.WithoutAdvisories(pkgs); distro != "" {
 				return fmt.Errorf("%s: ojo has no advisories for %q, so its OS packages can't be checked for vulnerabilities (-f sbom still lists them)", ref, distro)
@@ -69,55 +72,13 @@ func imageCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if kevFlag {
-				if err := annotateKEV(cmd, findings); err != nil {
-					return err
-				}
-			}
-
-			ignoreRules, err := ignore.Load(ignoreFile)
-			if err != nil {
-				return fmt.Errorf("loading ignore file: %w", err)
-			}
-			vexStatements, err := vex.Load(vexFile)
-			if err != nil {
-				return fmt.Errorf("loading VEX file: %w", err)
-			}
-			kept, suppressed, _, _ := ignore.Apply(findings, nil, ignoreRules, "", time.Now())
-			findings = kept
-			if len(vexStatements) > 0 {
-				vexKept, vexSuppressed := vex.Apply(findings, vexStatements)
-				findings = vexKept
-				suppressed = append(suppressed, vexSuppressed...)
-			}
-
-			rep := report.Report{Target: fmt.Sprintf("%s (%s)", ref, osLabel), Findings: findings, SuppressedFindings: suppressed}
-			switch format {
-			case "json":
-				if err := rep.JSON(cmd.OutOrStdout()); err != nil {
-					return err
-				}
-			case "sarif":
-				if err := rep.SARIFWith(cmd.OutOrStdout(), "", report.SARIFOptions{OmitSuppressed: sarifOmitSuppressed}); err != nil {
-					return err
-				}
-			case "vex":
-				doc := vex.Generate(findings, "ojo "+Version, time.Now())
-				if err := vex.Write(cmd.OutOrStdout(), doc); err != nil {
-					return err
-				}
-			default:
-				rep.Table(cmd.OutOrStdout(), "")
-			}
-
-			if len(findings) > 0 {
-				return ErrFindingsFound
-			}
-			return nil
+			return writeFindings(cmd, fmt.Sprintf("%s (%s)", ref, osLabel), findings, findingsOutput{
+				format: format, ignoreFile: ignoreFile, vexFile: vexFile, kev: kevFlag, sarifOmitSuppressed: sarifOmitSuppressed,
+			})
 		},
 	}
 
-	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, sbom, sarif, vex")
+	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, sbom, spdx, sarif, vex")
 	cmd.Flags().StringVar(&configPath, "config", "", "path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)")
 	cmd.Flags().StringVar(&ignoreFile, "ignore-file", "", "path to a .ojoignore file (default: .ojoignore in the current directory, if present)")
 	cmd.Flags().StringVar(&platform, "platform", "", "image platform to pull as os/arch, e.g. linux/arm64 (default: linux/amd64)")
@@ -164,8 +125,63 @@ func imageVulns(cmd *cobra.Command, pkgs []model.Package) ([]model.Finding, erro
 
 func isMachineFormat(format string) bool {
 	switch format {
-	case "json", "sarif", "sbom", "vex":
+	case "json", "sarif", "sbom", "spdx", "vex":
 		return true
 	}
 	return false
+}
+
+type findingsOutput struct {
+	format, ignoreFile, vexFile string
+	kev, sarifOmitSuppressed    bool
+}
+
+// writeFindings applies KEV, .ojoignore and VEX to findings and writes them
+// in the requested format.
+func writeFindings(cmd *cobra.Command, target string, findings []model.Finding, o findingsOutput) error {
+	if o.kev {
+		if err := annotateKEV(cmd, findings); err != nil {
+			return err
+		}
+	}
+
+	ignoreRules, err := ignore.Load(o.ignoreFile)
+	if err != nil {
+		return fmt.Errorf("loading ignore file: %w", err)
+	}
+	vexStatements, err := vex.Load(o.vexFile)
+	if err != nil {
+		return fmt.Errorf("loading VEX file: %w", err)
+	}
+	kept, suppressed, _, _ := ignore.Apply(findings, nil, ignoreRules, "", time.Now())
+	findings = kept
+	if len(vexStatements) > 0 {
+		vexKept, vexSuppressed := vex.Apply(findings, vexStatements)
+		findings = vexKept
+		suppressed = append(suppressed, vexSuppressed...)
+	}
+
+	rep := report.Report{Target: target, Findings: findings, SuppressedFindings: suppressed}
+	switch o.format {
+	case "json":
+		if err := rep.JSON(cmd.OutOrStdout()); err != nil {
+			return err
+		}
+	case "sarif":
+		if err := rep.SARIFWith(cmd.OutOrStdout(), "", report.SARIFOptions{OmitSuppressed: o.sarifOmitSuppressed}); err != nil {
+			return err
+		}
+	case "vex":
+		doc := vex.Generate(findings, "ojo "+Version, time.Now())
+		if err := vex.Write(cmd.OutOrStdout(), doc); err != nil {
+			return err
+		}
+	default:
+		rep.Table(cmd.OutOrStdout(), "")
+	}
+
+	if len(findings) > 0 {
+		return ErrFindingsFound
+	}
+	return nil
 }

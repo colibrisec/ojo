@@ -16,6 +16,7 @@ nav:
       - Target:
           - Filesystem: guide/target/filesystem.md
           - Container Image: guide/target/container-image.md
+          - SBOM: guide/target/sbom.md
       - Scanner:
           - Vulnerability: guide/scanner/vulnerability.md
           - Secret: guide/scanner/secret.md

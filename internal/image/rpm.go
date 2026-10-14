@@ -79,17 +79,17 @@ func rpmPackage(info *rpmdb.PackageInfo, ecosystem model.Ecosystem) (model.Packa
 	return model.Package{
 		Name:      info.Name,
 		Version:   version,
-		Origin:    rpmSourceName(info.SourceRpm),
+		Origin:    RPMSourceName(info.SourceRpm),
 		Ecosystem: ecosystem,
 		Source:    "rpm",
 		License:   info.License,
 	}, true
 }
 
-// rpmSourceName extracts the source package name from a SOURCERPM value
+// RPMSourceName extracts the source package name from a SOURCERPM value
 // ("openssl-3.0.7-27.el9.src.rpm" -> "openssl"). Advisories are filed
 // against the source package, and Rocky Linux's are only matched by it.
-func rpmSourceName(sourceRpm string) string {
+func RPMSourceName(sourceRpm string) string {
 	s := strings.TrimSuffix(sourceRpm, ".rpm")
 	s = strings.TrimSuffix(strings.TrimSuffix(s, ".src"), ".nosrc")
 	for range 2 { // drop -release, then -version

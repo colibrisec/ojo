@@ -12,6 +12,7 @@ ojo is an open source security scanner for dependencies, secrets, misconfigurati
 ```console
 $ ojo fs .                    # dependency vulnerabilities in a repo
 $ ojo image python:3.14-slim  # OS and Node.js package vulnerabilities in a container image
+$ ojo sbom bom.cdx.json       # vulnerabilities in the packages a CycloneDX or SPDX SBOM lists
 ```
 
 ## Installation
@@ -48,7 +49,7 @@ $ mkdocs serve
 | SAST | Injection, weak crypto, and other source-level issues in Go (`go/ast`-based), Python, JavaScript/TypeScript, PHP, Ruby, and Java (tree-sitter-based) | Opt-in (`--scanners sast`) |
 | Code quality | Maintainability smells: complexity, function length, nesting depth, parameter count, duplicate code, TODO/FIXME comments | Opt-in (`--scanners quality`) |
 
-Output is a table by default; `-f json`, `-f sarif`, `-f sbom` (CycloneDX, with package licenses), and `-f vex` (OpenVEX) are available on every command, and `ojo fs -g` writes GitLab security reports. Findings can be suppressed with a `.ojoignore` file or an OpenVEX document (`--vex-file`), and flagged against CISA's Known Exploited Vulnerabilities catalog with `--kev`.
+Output is a table by default; `-f json`, `-f sarif`, `-f sbom` (CycloneDX, with package licenses), `-f spdx` (SPDX 2.3), and `-f vex` (OpenVEX) are available on every command, and `ojo fs -g` writes GitLab security reports. Findings can be suppressed with a `.ojoignore` file or an OpenVEX document (`--vex-file`), and flagged against CISA's Known Exploited Vulnerabilities catalog with `--kev`.
 
 ## Building from source
 
@@ -61,7 +62,7 @@ $ go build -o ojo .
 
 ## Status
 
-ojo is young — see [Roadmap & Limitations](docs/roadmap.md) for what isn't supported yet (license policy checks, SPDX output, Kubernetes cluster scanning, and more).
+ojo is young — see [Roadmap & Limitations](docs/roadmap.md) for what isn't supported yet (license policy checks, Kubernetes cluster scanning, and more).
 
 ## License
 

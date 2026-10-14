@@ -21,7 +21,7 @@ func TestScanPHP(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "app.php"), []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	issues, err := scanPHP(dir)
+	issues, err := scanPHP(dir, DefaultThresholds)
 	if err != nil {
 		t.Fatal(err)
 	}

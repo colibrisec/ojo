@@ -119,6 +119,20 @@ func TestFsCmd_VulnScannerStub(t *testing.T) {
 	}
 }
 
+func TestFsCmd_VulnWarnsAboutUnpinnedRequirements(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "requirements.txt", "django==3.2.0\nnumpy>=1.0\n")
+	stubOSVScan(t, nil, nil)
+
+	out, err := run(t, dir, "--scanners", "vuln")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !strings.Contains(out, "warning: 1 requirement(s)") || !strings.Contains(out, "numpy (requirements.txt, version range)") {
+		t.Errorf("expected a warning naming numpy, got %q", out)
+	}
+}
+
 func TestFsCmd_PrintsScanProgress(t *testing.T) {
 	dir := t.TempDir()
 	stubOSVScan(t, nil, nil)
@@ -209,6 +223,25 @@ func TestFsCmd_ConfigFileSetsFormatAndScanners(t *testing.T) {
 	}
 	if !strings.Contains(out, `"RuleID": "aws-access-key-id"`) {
 		t.Errorf("expected the config file's scanners/format to take effect (JSON output with the secret finding), got %q", out)
+	}
+}
+
+func TestFsCmd_ConfigFileSetsQualityThresholds(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "main.go", "package main\n\nfunc f(a, b, c int) int {\n\treturn a + b + c\n}\n")
+
+	if _, err := run(t, dir, "--scanners", "quality"); err != nil {
+		t.Fatalf("expected no findings at the default thresholds, got %v", err)
+	}
+
+	cfgPath := filepath.Join(dir, ".ojo.yaml")
+	write(t, dir, ".ojo.yaml", "quality:\n  max-parameters: 2\n")
+	out, err := run(t, dir, "--scanners", "quality", "--config", cfgPath)
+	if !errors.Is(err, ErrFindingsFound) {
+		t.Errorf("expected ErrFindingsFound once max-parameters is lowered, got %v", err)
+	}
+	if !strings.Contains(out, "quality-parameter-count") || !strings.Contains(out, "threshold: 2") {
+		t.Errorf("expected a parameter-count finding against the configured threshold, got %q", out)
 	}
 }
 
@@ -342,6 +375,30 @@ func TestFsCmd_GitlabWritesReports(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Errorf("expected %s to be written: %v", name, err)
 		}
+	}
+}
+
+func TestFsCmd_GitlabCodeQualityOnlyWhenQualityRequested(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "main.go", "package main\n\n// TODO: finish\nfunc f() {}\n")
+	t.Chdir(dir)
+
+	if _, err := run(t, dir, "-g"); err != nil {
+		t.Fatalf("expected no findings without quality, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "gl-code-quality-report.json")); err == nil {
+		t.Error("gl-code-quality-report.json should not be written unless quality is requested")
+	}
+
+	if _, err := run(t, dir, "-g", "--scanners", "quality"); !errors.Is(err, ErrFindingsFound) {
+		t.Fatalf("expected ErrFindingsFound, got %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "gl-code-quality-report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "quality-todo-comment") {
+		t.Errorf("expected the TODO finding in the code quality report, got %s", data)
 	}
 }
 

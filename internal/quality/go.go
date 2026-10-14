@@ -11,7 +11,7 @@ import (
 	"github.com/colibrisec/ojo/internal/walk"
 )
 
-func scanGo(root string) ([]model.Issue, error) {
+func scanGo(root string, th Thresholds) ([]model.Issue, error) {
 	var issues []model.Issue
 	err := walk.Walk(root, func(path string, d fs.DirEntry) error {
 		if !strings.HasSuffix(path, ".go") {
@@ -26,10 +26,10 @@ func scanGo(root string) ([]model.Issue, error) {
 			switch fn := n.(type) {
 			case *ast.FuncDecl:
 				if fn.Body != nil {
-					issues = append(issues, measureGoFunc(fn.Name.Name, fn.Type.Params, fn.Body, fset, path).issues()...)
+					issues = append(issues, measureGoFunc(fn.Name.Name, fn.Type.Params, fn.Body, fset, path).issues(th)...)
 				}
 			case *ast.FuncLit:
-				issues = append(issues, measureGoFunc("func literal", fn.Type.Params, fn.Body, fset, path).issues()...)
+				issues = append(issues, measureGoFunc("func literal", fn.Type.Params, fn.Body, fset, path).issues(th)...)
 			}
 			return true
 		})

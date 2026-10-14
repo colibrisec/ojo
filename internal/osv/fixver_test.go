@@ -7,31 +7,6 @@ import (
 	"github.com/colibrisec/ojo/internal/model"
 )
 
-func TestVersionCompare(t *testing.T) {
-	cases := []struct {
-		a, b string
-		want int // sign only
-	}{
-		{"1.35+dfsg-3.1", "1.35+dfsg-4", -1},
-		{"2.2.28", "2.2.9", 1}, // numeric compare, not lexical ("28" > "9")
-		{"3.2.13", "3.2.13", 0},
-		{"1.0.0", "1.0.1", -1},
-	}
-	for _, c := range cases {
-		got := versionCompare(c.a, c.b)
-		gotSign := 0
-		switch {
-		case got < 0:
-			gotSign = -1
-		case got > 0:
-			gotSign = 1
-		}
-		if gotSign != c.want {
-			t.Errorf("versionCompare(%q, %q) sign = %d, want %d", c.a, c.b, gotSign, c.want)
-		}
-	}
-}
-
 func TestResolveFixedVersion(t *testing.T) {
 	d := vulnDetail{}
 	d.Affected = []struct {
@@ -95,5 +70,27 @@ func TestResolveFixedVersionMatchesSourcePackage(t *testing.T) {
 	pkg := model.Package{Name: "libcrypto3", Origin: "openssl", Version: "3.5.6-r0", Ecosystem: "Alpine:v3.23"}
 	if got := resolveFixedVersion(d, pkg); got != "3.5.8-r0" {
 		t.Errorf("fixed version for binary package must be resolved via its source package, got %q", got)
+	}
+}
+
+func TestResolveFixedVersionUsesEcosystemOrdering(t *testing.T) {
+	cases := []struct {
+		ecosystem, installed, events, want string
+	}{
+		{"PyPI", "2.0.0rc1", `{"introduced":"0"},{"fixed":"2.0.0"}`, "2.0.0"},
+		{"Maven", "1.0-SNAPSHOT", `{"introduced":"0"},{"fixed":"1.0"}`, "1.0"},
+		{"Debian:12", "1.2~rc1-1", `{"introduced":"0"},{"fixed":"1.2-1"}`, "1.2-1"},
+		{"npm", "1.0.0", `{"introduced":"0"},{"fixed":"1.0.0-rc.1"}`, ""},
+	}
+	for _, c := range cases {
+		var d vulnDetail
+		doc := `{"affected":[{"package":{"name":"p","ecosystem":"` + c.ecosystem + `"},"ranges":[{"events":[` + c.events + `]}]}]}`
+		if err := json.Unmarshal([]byte(doc), &d); err != nil {
+			t.Fatal(err)
+		}
+		pkg := model.Package{Name: "p", Version: c.installed, Ecosystem: model.Ecosystem(c.ecosystem)}
+		if got := resolveFixedVersion(d, pkg); got != c.want {
+			t.Errorf("%s %s: got fixed version %q, want %q", c.ecosystem, c.installed, got, c.want)
+		}
 	}
 }

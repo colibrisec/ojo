@@ -5,9 +5,11 @@ go 1.26.5
 require (
 	github.com/CycloneDX/cyclonedx-go v0.11.0
 	github.com/google/go-containerregistry v0.21.7
+	github.com/google/uuid v1.6.0
 	github.com/hashicorp/hcl/v2 v2.24.0
 	github.com/knqyf263/go-rpmdb v0.1.1
 	github.com/odvcencio/gotreesitter v0.48.0
+	github.com/package-url/packageurl-go v0.1.7
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/shogo82148/androidbinary v1.0.6
 	github.com/spf13/cobra v1.10.2
@@ -24,7 +26,6 @@ require (
 	github.com/docker/cli v29.5.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/kr/text v0.1.0 // indirect

@@ -95,8 +95,8 @@ func TestRpmSourceName(t *testing.T) {
 		"":                                        "",
 	}
 	for in, want := range cases {
-		if got := rpmSourceName(in); got != want {
-			t.Errorf("rpmSourceName(%q) = %q, want %q", in, got, want)
+		if got := RPMSourceName(in); got != want {
+			t.Errorf("RPMSourceName(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
