@@ -25,6 +25,7 @@ pandas
 scipy==1.5.*
 mylib @ git+https://example.com/mylib.git
 git+https://example.com/other.git#egg=otherlib
+https://example.com/archive.tar.gz
 -e ./local#egg=localpkg
 `)
 	write(t, dir, "requirements-base.txt", "-r requirements.txt\nsix==1.15.0\n")
@@ -63,7 +64,7 @@ git+https://example.com/other.git#egg=otherlib
 	}
 	wantSkipped := map[string]string{
 		"numpy": "version range", "pandas": "no version", "scipy": "version range",
-		"mylib": "URL or path", "otherlib": "URL or path", "localpkg": "editable install",
+		"mylib": "URL or path", "otherlib": "URL or path", "https://example.com/archive.tar.gz": "URL or path", "localpkg": "editable install",
 	}
 	if len(reasons) != len(wantSkipped) {
 		t.Errorf("got skipped %v, want %v", reasons, wantSkipped)
