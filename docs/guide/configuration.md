@@ -14,7 +14,7 @@ format: sarif
 | Key | Mirrors | Applies to |
 |---|---|---|
 | `scanners` | `--scanners` | `ojo fs` only |
-| `format` | `-f`/`--format` | `ojo fs` and `ojo image` |
+| `format` | `-f`/`--format` | every command |
 | `quality` | — | `ojo fs`; the quality scanner's thresholds, see [Code Quality](scanner/quality.md#rules) |
 
 **Precedence:** an explicit flag always wins, then the config file, then the built-in default (`vuln` / `table`).
@@ -72,13 +72,14 @@ Default: `vuln`. An unknown value is an error. `-g`/`--gitlab` overrides this an
 
 ## `-f` / `--format`
 
-Both commands.
+Every command.
 
 | Value | Output |
 |---|---|
 | `table` (default) | Box-drawn human-readable table |
 | `json` | Machine-readable, for piping into other tools |
 | `sbom` | CycloneDX SBOM, spec 1.7 unless `--cyclonedx-version` says otherwise (see [SBOM](sbom.md)), including package licenses — skips vulnerability scanning entirely |
+| `spdx` | [SPDX](https://spdx.dev) 2.3 JSON SBOM of the same packages (validated against the official schema) — skips vulnerability scanning entirely |
 | `sarif` | [SARIF](https://docs.oasis-open.org/sarif/sarif/v2.1.0/) 2.1.0, for `github/codeql-action/upload-sarif` and similar tooling (validated against the official schema) |
 | `vex` | [OpenVEX](https://openvex.dev) document for the vulnerability findings (see [CLI Reference: VEX](../reference/cli.md#vex-f-vex-vex-file)) |
 

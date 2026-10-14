@@ -6,6 +6,7 @@ It scans:
 
 - **Filesystems and source repos** (`ojo fs`) — dependency manifests across eleven ecosystems, hardcoded secrets, misconfiguration (Dockerfile, Kubernetes, Terraform, CloudFormation, MCP server configs, skill definitions, Android APK manifests), and source-level SAST and code-quality checks across Go, Python, JavaScript/TypeScript, PHP, Ruby, and Java
 - **Container images** (`ojo image`) — installed OS packages (apk/dpkg/rpm) and Node.js packages against known vulnerabilities
+- **SBOMs** (`ojo sbom`) — the packages listed in a CycloneDX or SPDX SBOM, from ojo or another tool
 
 Vulnerability data comes from [OSV.dev](https://osv.dev), the same aggregated advisory database (GitHub Security Advisories, PyPA, RustSec, Debian/Alpine security trackers, and more) that underpins most modern scanners.
 

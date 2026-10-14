@@ -34,7 +34,7 @@ ojo is young. This page is the honest, unvarnished list of what it doesn't do ye
 
 ## Supply chain
 
-- SBOM output is CycloneDX JSON only — no SPDX format, and no SBOM *input* scanning (can't point ojo at an existing SBOM the way some scanners can). `--cyclonedx-version` selects the spec version (default: latest).
+- SBOM output is CycloneDX JSON (`--cyclonedx-version` selects the spec version) or SPDX 2.3 JSON — no SPDX 3.0 or tag-value. `ojo sbom` scans CycloneDX and SPDX 2.x JSON SBOMs, but only entries with a purl it can map to an ecosystem it checks; SBOM-specific metadata (dependency graph, hashes, VEX embedded in a CycloneDX document) is ignored.
 - No signature verification, no attestation, no Rekor integration.
 
 ## Operations

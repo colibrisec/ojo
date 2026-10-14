@@ -57,7 +57,9 @@ func withLicenses(cmd *cobra.Command, pkgs []model.Package, skip bool) []model.P
 	return pkgs
 }
 
-func warnUnpinned(cmd *cobra.Command, root string, unpinned []manifest.Unscannable) {
+// warnUnscannable names the dependencies a vulnerability scan skipped, since
+// a quiet skip reads as a clean result.
+func warnUnscannable(cmd *cobra.Command, root string, unpinned []manifest.Unscannable, what string) {
 	if len(unpinned) == 0 {
 		return
 	}
@@ -74,5 +76,5 @@ func warnUnpinned(cmd *cobra.Command, root string, unpinned []manifest.Unscannab
 		}
 		names = append(names, fmt.Sprintf("%s (%s, %s)", u.Name, rel, u.Reason))
 	}
-	fmt.Fprintf(cmd.ErrOrStderr(), "warning: %d requirement(s) have no exact version and were not checked for vulnerabilities: %s\n", len(unpinned), strings.Join(names, "; "))
+	fmt.Fprintf(cmd.ErrOrStderr(), "warning: %d %s and were not checked for vulnerabilities: %s\n", len(unpinned), what, strings.Join(names, "; "))
 }

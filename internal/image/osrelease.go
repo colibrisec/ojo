@@ -25,8 +25,11 @@ func parseOSRelease(data []byte) map[string]string {
 }
 
 func osEcosystem(info map[string]string) model.Ecosystem {
-	id := info["ID"]
-	version := info["VERSION_ID"]
+	return OSEcosystem(info["ID"], info["VERSION_ID"])
+}
+
+// OSEcosystem maps an os-release ID and VERSION_ID to a package ecosystem.
+func OSEcosystem(id, version string) model.Ecosystem {
 	switch id {
 	case "alpine":
 		parts := strings.SplitN(version, ".", 3)

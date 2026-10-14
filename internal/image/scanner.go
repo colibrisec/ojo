@@ -81,6 +81,16 @@ var osPackageSources = map[string]bool{"apk": true, "dpkg": true, "rpm": true}
 // has advisories for: OSV's, plus Amazon Linux through internal/alas.
 var advisoryEcosystems = []string{"Alpine:", "Debian:", "Ubuntu:", "Rocky Linux:", "AlmaLinux:", "Red Hat:", "Amazon Linux:"}
 
+// HasAdvisories reports whether OS packages of eco can be checked.
+func HasAdvisories(eco model.Ecosystem) bool {
+	for _, prefix := range advisoryEcosystems {
+		if strings.HasPrefix(string(eco), prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // WithoutAdvisories returns the distribution ID of pkgs' OS packages if it
 // is one ojo has no advisories for (Fedora, CentOS, Oracle Linux, SUSE,
 // Amazon Linux 1, ...), or "" if they can be checked. Such packages can
@@ -91,11 +101,7 @@ func WithoutAdvisories(pkgs []model.Package) string {
 		if !osPackageSources[p.Source] {
 			continue
 		}
-		known := false
-		for _, prefix := range advisoryEcosystems {
-			known = known || strings.HasPrefix(string(p.Ecosystem), prefix)
-		}
-		if !known {
+		if !HasAdvisories(p.Ecosystem) {
 			return string(p.Ecosystem)
 		}
 	}

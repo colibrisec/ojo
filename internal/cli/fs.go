@@ -71,12 +71,16 @@ func fsCmd() *cobra.Command {
 				return err
 			}
 
-			if format == "sbom" {
+			if format == "sbom" || format == "spdx" {
 				pkgs, err := manifest.Discover(root)
 				if err != nil {
 					return fmt.Errorf("discovering manifests: %w", err)
 				}
-				return report.SBOM(cmd.OutOrStdout(), withLicenses(cmd, pkgs, noLicenseLookup), sbomVersion)
+				pkgs = withLicenses(cmd, pkgs, noLicenseLookup)
+				if format == "spdx" {
+					return report.SPDX(cmd.OutOrStdout(), pkgs, root, Version, time.Now())
+				}
+				return report.SBOM(cmd.OutOrStdout(), pkgs, sbomVersion)
 			}
 
 			runQuality := false
@@ -125,7 +129,7 @@ func fsCmd() *cobra.Command {
 					if err != nil {
 						return fmt.Errorf("discovering manifests: %w", err)
 					}
-					warnUnpinned(cmd, root, unpinned)
+					warnUnscannable(cmd, root, unpinned, "requirement(s) have no exact version")
 					findings, err := osvScan(cmd.Context(), resolvePods(cmd, pkgs))
 					if err != nil {
 						return fmt.Errorf("querying OSV: %w", err)
@@ -252,7 +256,7 @@ func fsCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, sbom, sarif, vex")
+	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, sbom, spdx, sarif, vex")
 	cmd.Flags().StringVar(&scanners, "scanners", "vuln", "comma-separated scanners to run: vuln, secret, misconfig, sast, quality")
 	cmd.Flags().StringVar(&configPath, "config", "", "path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)")
 	cmd.Flags().BoolVarP(&gitlab, "gitlab", "g", false, "write GitLab-compatible security reports (gl-dependency-scanning-report.json, gl-sast-report.json, gl-secret-detection-report.json, gl-sbom-report.cdx.json) instead of -f/--format output; runs the vuln, secret, misconfig, and sast scanners, plus quality (and gl-code-quality-report.json) when --scanners or .ojo.yaml includes it")

@@ -12,6 +12,7 @@ import (
 	"github.com/colibrisec/ojo/internal/ignore"
 	"github.com/colibrisec/ojo/internal/license"
 	"github.com/colibrisec/ojo/internal/model"
+	"github.com/colibrisec/ojo/internal/purl"
 )
 
 const titleWrapWidth = 60
@@ -287,20 +288,8 @@ func sbomLicenses(l string) *cdx.Licenses {
 	}
 }
 
-// Purl returns a package-url (https://github.com/package-url/purl-spec)
-// identifier for p. Used for SBOM component identity and (internal/vex) to
-// match a finding's package against a VEX statement's product.
+// Purl returns a package-url for p, used for SBOM component identity and
+// (internal/vex) to match a finding's package against a VEX product.
 func Purl(p model.Package) string {
-	switch p.Ecosystem {
-	case model.EcosystemGo:
-		return fmt.Sprintf("pkg:golang/%s@%s", p.Name, p.Version)
-	case model.EcosystemNpm:
-		return fmt.Sprintf("pkg:npm/%s@%s", p.Name, p.Version)
-	case model.EcosystemPyPI:
-		return fmt.Sprintf("pkg:pypi/%s@%s", p.Name, p.Version)
-	case model.EcosystemCocoaPods:
-		return fmt.Sprintf("pkg:cocoapods/%s@%s", p.Name, p.Version)
-	default:
-		return fmt.Sprintf("pkg:generic/%s@%s", p.Name, p.Version)
-	}
+	return purl.FromPackage(p)
 }

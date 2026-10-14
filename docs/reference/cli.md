@@ -11,10 +11,11 @@ Scanners (--scanners, comma-separated, ojo fs only):
   sast       source-level issues (Go, Python, JS/TS, PHP, Ruby, Java)
   quality    maintainability smells: complexity, length, nesting, params, duplication
 
-Output formats (-f/--format, both commands):
+Output formats (-f/--format, every command):
   table      human-readable box-drawn table (default)
   json       machine-readable
   sbom       CycloneDX SBOM of discovered packages and their licenses, skips vulnerability scanning
+  spdx       SPDX 2.3 JSON SBOM, as sbom
   sarif      SARIF 2.1.0, for GitHub code scanning and similar tooling
   vex        OpenVEX document for the vulnerability findings
 
@@ -27,12 +28,14 @@ Examples:
   ojo fs -f sarif . > results.sarif
   ojo fs -g .
   ojo image python:3.14-slim
+  ojo sbom bom.cdx.json
 
 Available Commands:
   completion  Generate the autocompletion script for the specified shell
   fs          Scan a filesystem path for vulnerabilities, secrets, and misconfiguration
   help        Help about any command
   image       Scan a container image for vulnerable OS and Node.js packages
+  sbom        Scan the packages listed in a CycloneDX or SPDX SBOM for vulnerabilities
 
 Flags:
   -h, --help      help for ojo
@@ -59,7 +62,7 @@ Usage:
 Flags:
       --config string              path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)
       --cyclonedx-version string   CycloneDX spec version for -f sbom output, e.g. 1.4 (default: latest)
-  -f, --format string              output format: table, json, sbom, sarif, vex (default "table")
+  -f, --format string              output format: table, json, sbom, spdx, sarif, vex (default "table")
   -g, --gitlab                     write GitLab-compatible security reports (gl-dependency-scanning-report.json, gl-sast-report.json, gl-secret-detection-report.json, gl-sbom-report.cdx.json) instead of -f/--format output; runs the vuln, secret, misconfig, and sast scanners, plus quality (and gl-code-quality-report.json) when --scanners or .ojo.yaml includes it
   -h, --help                       help for fs
       --ignore-file string         path to a .ojoignore file (default: .ojoignore in the current directory, if present)
@@ -148,7 +151,7 @@ Usage:
 Flags:
       --config string              path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)
       --cyclonedx-version string   CycloneDX spec version for -f sbom output, e.g. 1.4 (default: latest)
-  -f, --format string              output format: table, json, sbom, sarif, vex (default "table")
+  -f, --format string              output format: table, json, sbom, spdx, sarif, vex (default "table")
   -h, --help                       help for image
       --ignore-file string         path to a .ojoignore file (default: .ojoignore in the current directory, if present)
       --kev                        flag findings whose CVE is in CISA's Known Exploited Vulnerabilities catalog (confirmed real-world exploitation); annotation only, doesn't affect exit code
@@ -165,6 +168,27 @@ Flags:
 ### `--platform`
 
 Pulls the given `os/arch` platform of a multi-arch image, e.g. `--platform linux/arm64`. Default: `linux/amd64`.
+
+## `ojo sbom`
+
+```
+Usage:
+  ojo sbom [file] [flags]
+
+Flags:
+      --config string              path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)
+      --cyclonedx-version string   CycloneDX spec version for -f sbom output, e.g. 1.4 (default: latest)
+  -f, --format string              output format: table, json, sbom, spdx, sarif, vex (sbom and spdx convert the input) (default "table")
+  -h, --help                       help for sbom
+      --ignore-file string         path to a .ojoignore file (default: .ojoignore in the current directory, if present)
+      --kev                        flag findings whose CVE is in CISA's Known Exploited Vulnerabilities catalog (confirmed real-world exploitation); annotation only, doesn't affect exit code
+      --sarif-omit-suppressed      omit results suppressed by .ojoignore or a VEX file from -f sarif output instead of marking them suppressed; for consumers such as GitHub code scanning that ignore SARIF suppressions
+      --vex-file string            path to an OpenVEX document; suppresses findings its not_affected/fixed statements cover (matched by product purl and CVE/alias)
+```
+
+Reads a CycloneDX (JSON or XML) or SPDX 2.x JSON SBOM and checks the packages it lists, the same way `ojo image` checks an image's packages. See [SBOM target](../guide/target/sbom.md) for how entries are matched and what gets skipped. With `-f sbom` or `-f spdx` it converts the SBOM instead of scanning it.
+
+`--kev`, `--vex-file`/`-f vex`, `--ignore-file`, `--cyclonedx-version`, and `--sarif-omit-suppressed` behave as described under [`ojo fs`](#ojo-fs).
 
 ## Config file
 
