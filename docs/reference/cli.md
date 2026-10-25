@@ -10,6 +10,7 @@ Scanners (--scanners, comma-separated, ojo fs only):
   misconfig  Dockerfile / Kubernetes / Terraform / CloudFormation / MCP / skill / APK misconfiguration
   sast       source-level issues (Go, Python, JS/TS, PHP, Ruby, Java)
   quality    maintainability smells: complexity, length, nesting, params, duplication
+  license    dependency licenses against the policy in .ojo.yaml
 
 Output formats (-f/--format, every command):
   table      human-readable box-drawn table (default)
@@ -71,7 +72,7 @@ Flags:
       --respect-gitignore          skip untracked files that git ignores (e.g. build output, coverage reports); no effect outside a git repository
       --rules-dir string           directory of custom *.yaml SAST rules (default: <path>/.ojo/rules, if present); runs alongside --scanners sast
       --sarif-omit-suppressed      omit results suppressed by .ojoignore or a VEX file from -f sarif output instead of marking them suppressed; for consumers such as GitHub code scanning that ignore SARIF suppressions
-      --scanners string            comma-separated scanners to run: vuln, secret, misconfig, sast, quality (default "vuln")
+      --scanners string            comma-separated scanners to run: vuln, secret, misconfig, sast, quality, license (default "vuln")
       --secret-git-history         also scan git commit history (current branch) for secrets that were committed and later removed; requires root to be a git repository
       --secret-rules-file string   path to a YAML file of additional secret rules (same shape as the built-in rules), run alongside --scanners secret
       --vex-file string            path to an OpenVEX document; suppresses findings its not_affected/fixed statements cover (matched by product purl and CVE/alias)
@@ -87,9 +88,13 @@ Selects the CycloneDX spec version for `-f sbom` output (and `-g`'s `gl-sbom-rep
 
 Maintainability smells (complexity, length, nesting, parameter count, duplicate code) — not security findings. Off by default, opt in with `--scanners quality` (combine with others, e.g. `--scanners vuln,quality`). See [Code Quality scanner](../guide/scanner/quality.md) for the full rule list and thresholds, which `.ojo.yaml` can override. With `-g/--gitlab`, its findings go to `gl-code-quality-report.json`.
 
+### `--scanners license`
+
+Checks dependency licenses against the `license` policy in `.ojo.yaml` (an allow or deny list). Off by default, and an error without a policy. See [License scanner](../guide/scanner/license.md).
+
 ### `--no-license-lookup`
 
-`-f sbom` (and `-g`'s SBOM) looks up package licenses online: [deps.dev](https://deps.dev) for Go, npm, PyPI, Maven, NuGet, crates.io, and RubyGems packages, and the CocoaPods spec CDN for pods. This flag skips those lookups, so the SBOM contains only licenses recorded locally and needs no network access. Works on both `ojo fs` and `ojo image`. See [SBOM: Licenses](../guide/sbom.md#licenses).
+`-f sbom` (and `-g`'s SBOM), and the license scanner, look up package licenses online: [deps.dev](https://deps.dev) for Go, npm, PyPI, Maven, NuGet, crates.io, and RubyGems packages, and the CocoaPods spec CDN for pods. This flag skips those lookups, so the SBOM contains only licenses recorded locally and needs no network access. Works on both `ojo fs` and `ojo image`. See [SBOM: Licenses](../guide/sbom.md#licenses).
 
 ### `--rules-dir`
 

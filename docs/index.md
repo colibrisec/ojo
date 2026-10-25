@@ -42,10 +42,11 @@ Most scanners either reimplement vulnerability databases from scratch (unrealist
 | [Misconfiguration](guide/scanner/misconfiguration.md) | Security misconfigurations in Dockerfiles, Kubernetes, Terraform, CloudFormation, MCP server configs, skill definitions, and Android APK manifests | Off (`--scanners misconfig`) |
 | [SAST](guide/scanner/sast.md) | Injection, weak crypto, and other source-level issues across Go, Python, JS/TS, PHP, Ruby, and Java | Off (`--scanners sast`) |
 | [Code Quality](guide/scanner/quality.md) | Maintainability smells: complexity, length, nesting, parameter count, duplicate code, TODO/FIXME comments | Off (`--scanners quality`) |
+| [License](guide/scanner/license.md) | Dependency licenses checked against an allow or deny list | Off (`--scanners license`) |
 
 ## Getting started
 
 Head to [Installation](getting-started/installation.md), then [Quick Start](getting-started/quick-start.md).
 
 !!! note "ojo is still growing!"
-    See [Roadmap & Limitations](roadmap.md) for an honest list of what's not supported yet — Kubernetes cluster scanning, license policy checks, custom policy languages, and more.
+    See [Roadmap & Limitations](roadmap.md) for an honest list of what's not supported yet — Kubernetes cluster scanning, custom policy languages, and more.

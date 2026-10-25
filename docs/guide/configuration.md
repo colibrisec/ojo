@@ -16,6 +16,7 @@ format: sarif
 | `scanners` | `--scanners` | `ojo fs` only |
 | `format` | `-f`/`--format` | every command |
 | `quality` | — | `ojo fs`; the quality scanner's thresholds, see [Code Quality](scanner/quality.md#rules) |
+| `license` | — | `ojo fs`; the license scanner's policy, see [License](scanner/license.md#policy) |
 
 **Precedence:** an explicit flag always wins, then the config file, then the built-in default (`vuln` / `table`).
 
@@ -67,6 +68,7 @@ $ ojo fs --scanners vuln,secret,misconfig,sast,quality .
 | `misconfig` | [Misconfiguration](scanner/misconfiguration.md) | ❌ |
 | `sast` | [SAST](scanner/sast.md) | ❌ |
 | `quality` | [Code Quality](scanner/quality.md) | ❌ |
+| `license` | [License](scanner/license.md) | ❌ |
 
 Default: `vuln`. An unknown value is an error. `-g`/`--gitlab` overrides this and runs `vuln,secret,misconfig,sast`, plus `quality` if you asked for it. `ojo image` doesn't take `--scanners` — it always runs the vulnerability scanner against the image's OS and Node.js packages.
 

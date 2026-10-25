@@ -16,6 +16,15 @@ type Config struct {
 	Scanners string  `yaml:"scanners"`
 	Format   string  `yaml:"format"`
 	Quality  Quality `yaml:"quality"`
+	License  License `yaml:"license"`
+}
+
+// License is the policy the license scanner checks packages against.
+type License struct {
+	Allow      []string `yaml:"allow"`
+	Deny       []string `yaml:"deny"`
+	Exceptions []string `yaml:"exceptions"`
+	Unknown    string   `yaml:"unknown"` // warn (default), fail, or ignore
 }
 
 // Quality overrides quality thresholds; zero keeps the default.
@@ -63,6 +72,14 @@ func Load(explicitPath string) (*Config, error) {
 		if f.value < 0 {
 			return nil, fmt.Errorf("parsing %s: quality.%s must be positive, got %d", path, f.name, f.value)
 		}
+	}
+	if len(c.License.Allow) > 0 && len(c.License.Deny) > 0 {
+		return nil, fmt.Errorf("parsing %s: license.allow and license.deny can't both be set", path)
+	}
+	switch c.License.Unknown {
+	case "", "warn", "fail", "ignore":
+	default:
+		return nil, fmt.Errorf("parsing %s: license.unknown must be warn, fail, or ignore, got %q", path, c.License.Unknown)
 	}
 	return &c, nil
 }

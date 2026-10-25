@@ -29,6 +29,7 @@ Scanners (--scanners, comma-separated, ojo fs only):
   misconfig  Dockerfile / Kubernetes / Terraform / CloudFormation / MCP / skill / APK misconfiguration
   sast       source-level issues (Go, Python, JS/TS, PHP, Ruby, Java)
   quality    maintainability smells: complexity, length, nesting, params, duplication
+  license    dependency licenses against the policy in .ojo.yaml
 
 Output formats (-f/--format, every command):
   table      human-readable box-drawn table (default)

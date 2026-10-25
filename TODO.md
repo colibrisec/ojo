@@ -272,6 +272,13 @@ Resolved the open decisions by folding into the existing `misconfig` scanner rat
 
 **Still not started:** nothing — all three rounds of this item (MCP+skill misconfig checks, the six explicitly-requested categories, and the agent-framework taint-sink extension) are now shipped.
 
+### License policy (`--scanners license`) — ✅ shipped, `ojo fs` only
+
+- `internal/license/policy.go`: allow or deny list (not both), package `exceptions`, and `unknown: warn|fail|ignore`, read from `.ojo.yaml`'s `license` key. SPDX expressions are evaluated (`OR` passes if any choice passes, `AND` needs all); text that doesn't parse is matched as one name. Deprecated GNU IDs normalize to `-only`/`-or-later`.
+- Findings are ordinary `model.Issue`s (`license-denied`, `license-not-allowed`, `license-unknown`), so `.ojoignore`, SARIF and the exit code need no changes.
+- Fixed along the way: deps.dev lookups for Go modules sent versions without their `v` prefix, so every Go dependency came back with no license (SBOM output included).
+- Open: `ojo image` and `ojo sbom` support.
+
 ### Config file support (`.ojo.yaml`) — ✅ shipped
 
 - `internal/config/config.go`: hand-rolled loader using `gopkg.in/yaml.v3` (already a dependency via secrets/misconfig), not `viper` — two fields, no hierarchical/env-var binding need.
