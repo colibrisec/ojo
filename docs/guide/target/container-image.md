@@ -6,7 +6,7 @@ $ ojo image [ref]
 
 Pulls an image reference (from any registry `docker pull` could reach — no Docker daemon required), reads its installed OS package database and any Node.js packages in it, and checks those packages against [OSV.dev](https://osv.dev) — or, for Amazon Linux, against Amazon's own security advisories.
 
-Only the **vulnerability** scanner runs against images today; `--scanners` doesn't apply to `ojo image` (see [Roadmap](../../roadmap.md)).
+`--scanners` takes `vuln` (the default) and `license`, which checks package licenses against your [license policy](../scanner/license.md). `ojo image --scanners license` works even on distributions ojo has no advisories for. Secret, misconfiguration, and SAST scanning of image contents aren't supported (see [Roadmap](../../roadmap.md)).
 
 ## Supported package managers
 

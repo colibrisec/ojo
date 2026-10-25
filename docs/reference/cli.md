@@ -4,7 +4,7 @@
 $ ojo --help
 ojo is a security scanner for dependencies, secrets, misconfig, and code.
 
-Scanners (--scanners, comma-separated, ojo fs only):
+Scanners (--scanners, comma-separated; ojo image and ojo sbom take vuln and license only):
   vuln       known CVEs in dependency manifests (default)
   secret     hardcoded credentials, API keys, tokens
   misconfig  Dockerfile / Kubernetes / Terraform / CloudFormation / MCP / skill / APK misconfiguration
@@ -68,7 +68,7 @@ Flags:
   -h, --help                       help for fs
       --ignore-file string         path to a .ojoignore file (default: .ojoignore in the current directory, if present)
       --kev                        flag findings whose CVE is in CISA's Known Exploited Vulnerabilities catalog (confirmed real-world exploitation); annotation only, doesn't affect exit code
-      --no-license-lookup          don't look up package licenses online (deps.dev, CocoaPods) for SBOM output; only licenses found locally are included
+      --no-license-lookup          don't look up package licenses online (deps.dev, CocoaPods); only licenses found locally are used
       --respect-gitignore          skip untracked files that git ignores (e.g. build output, coverage reports); no effect outside a git repository
       --rules-dir string           directory of custom *.yaml SAST rules (default: <path>/.ojo/rules, if present); runs alongside --scanners sast
       --sarif-omit-suppressed      omit results suppressed by .ojoignore or a VEX file from -f sarif output instead of marking them suppressed; for consumers such as GitHub code scanning that ignore SARIF suppressions
@@ -160,15 +160,16 @@ Flags:
   -h, --help                       help for image
       --ignore-file string         path to a .ojoignore file (default: .ojoignore in the current directory, if present)
       --kev                        flag findings whose CVE is in CISA's Known Exploited Vulnerabilities catalog (confirmed real-world exploitation); annotation only, doesn't affect exit code
-      --no-license-lookup          don't look up package licenses online (deps.dev, CocoaPods) for SBOM output; only licenses found locally are included
+      --no-license-lookup          don't look up package licenses online (deps.dev, CocoaPods); only licenses found locally are used
       --platform string            image platform to pull as os/arch, e.g. linux/arm64 (default: linux/amd64)
       --sarif-omit-suppressed      omit results suppressed by .ojoignore or a VEX file from -f sarif output instead of marking them suppressed; for consumers such as GitHub code scanning that ignore SARIF suppressions
+      --scanners string            comma-separated scanners to run: vuln, license (default "vuln")
       --vex-file string            path to an OpenVEX document; suppresses findings its not_affected/fixed statements cover (matched by product purl and CVE/alias)
 ```
 
 `ref` is required — any reference `docker pull` would accept (`nginx:1.25`, `myregistry.example.com/app:latest`, `python@sha256:...`).
 
-`--kev`, `--vex-file`/`-f vex`, `--ignore-file`, `--cyclonedx-version`, `--no-license-lookup`, and `--sarif-omit-suppressed` behave as described under [`ojo fs`](#ojo-fs).
+`--kev`, `--vex-file`/`-f vex`, `--ignore-file`, `--cyclonedx-version`, `--no-license-lookup`, and `--sarif-omit-suppressed` behave as described under [`ojo fs`](#ojo-fs). `--scanners` takes `vuln` (default) and `license`; see [License scanner](../guide/scanner/license.md).
 
 ### `--platform`
 
@@ -187,13 +188,15 @@ Flags:
   -h, --help                       help for sbom
       --ignore-file string         path to a .ojoignore file (default: .ojoignore in the current directory, if present)
       --kev                        flag findings whose CVE is in CISA's Known Exploited Vulnerabilities catalog (confirmed real-world exploitation); annotation only, doesn't affect exit code
+      --no-license-lookup          don't look up package licenses online (deps.dev, CocoaPods); only licenses found locally are used
       --sarif-omit-suppressed      omit results suppressed by .ojoignore or a VEX file from -f sarif output instead of marking them suppressed; for consumers such as GitHub code scanning that ignore SARIF suppressions
+      --scanners string            comma-separated scanners to run: vuln, license (default "vuln")
       --vex-file string            path to an OpenVEX document; suppresses findings its not_affected/fixed statements cover (matched by product purl and CVE/alias)
 ```
 
 Reads a CycloneDX (JSON or XML) or SPDX 2.x JSON SBOM and checks the packages it lists, the same way `ojo image` checks an image's packages. See [SBOM target](../guide/target/sbom.md) for how entries are matched and what gets skipped. With `-f sbom` or `-f spdx` it converts the SBOM instead of scanning it.
 
-`--kev`, `--vex-file`/`-f vex`, `--ignore-file`, `--cyclonedx-version`, and `--sarif-omit-suppressed` behave as described under [`ojo fs`](#ojo-fs).
+`--kev`, `--vex-file`/`-f vex`, `--ignore-file`, `--cyclonedx-version`, `--no-license-lookup`, and `--sarif-omit-suppressed` behave as described under [`ojo fs`](#ojo-fs). `--scanners` takes `vuln` (default) and `license`; see [License scanner](../guide/scanner/license.md).
 
 ## Config file
 

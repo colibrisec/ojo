@@ -181,7 +181,6 @@ func fsCmd() *cobra.Command {
 					}
 					rep.Issues = append(rep.Issues, issues...)
 				case "license":
-					fmt.Fprintln(cmd.ErrOrStderr(), "Running license scan...")
 					issues, err := licenseScan(cmd, root, cfg.License, noLicenseLookup)
 					if err != nil {
 						return err
