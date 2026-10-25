@@ -180,10 +180,17 @@ func fsCmd() *cobra.Command {
 						return fmt.Errorf("running quality: %w", err)
 					}
 					rep.Issues = append(rep.Issues, issues...)
+				case "license":
+					fmt.Fprintln(cmd.ErrOrStderr(), "Running license scan...")
+					issues, err := licenseScan(cmd, root, cfg.License, noLicenseLookup)
+					if err != nil {
+						return err
+					}
+					rep.Issues = append(rep.Issues, issues...)
 				case "":
 					// no-op, allows trailing commas
 				default:
-					return fmt.Errorf("unknown scanner %q (available: vuln, secret, misconfig, sast, quality)", s)
+					return fmt.Errorf("unknown scanner %q (available: vuln, secret, misconfig, sast, quality, license)", s)
 				}
 			}
 
@@ -257,7 +264,7 @@ func fsCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, sbom, spdx, sarif, vex")
-	cmd.Flags().StringVar(&scanners, "scanners", "vuln", "comma-separated scanners to run: vuln, secret, misconfig, sast, quality")
+	cmd.Flags().StringVar(&scanners, "scanners", "vuln", "comma-separated scanners to run: vuln, secret, misconfig, sast, quality, license")
 	cmd.Flags().StringVar(&configPath, "config", "", "path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)")
 	cmd.Flags().BoolVarP(&gitlab, "gitlab", "g", false, "write GitLab-compatible security reports (gl-dependency-scanning-report.json, gl-sast-report.json, gl-secret-detection-report.json, gl-sbom-report.cdx.json) instead of -f/--format output; runs the vuln, secret, misconfig, and sast scanners, plus quality (and gl-code-quality-report.json) when --scanners or .ojo.yaml includes it")
 	cmd.Flags().StringVar(&rulesDir, "rules-dir", "", "directory of custom *.yaml SAST rules (default: <path>/.ojo/rules, if present); runs alongside --scanners sast")

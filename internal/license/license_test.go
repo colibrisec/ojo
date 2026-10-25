@@ -56,7 +56,7 @@ func TestLookup(t *testing.T) {
 		{Name: "unknown", Version: "9.9.9", Ecosystem: model.EcosystemNpm},
 		{Name: "already-known", Version: "1.0.0", Ecosystem: model.EcosystemNpm, License: "MIT"},
 		{Name: "vendor/pkg", Version: "1.0.0", Ecosystem: model.EcosystemPackagist},
-		{Name: "example.com/mod", Version: "v1.0.0", Ecosystem: model.EcosystemGo},
+		{Name: "example.com/mod", Version: "1.0.0", Ecosystem: model.EcosystemGo}, // go.mod parser strips the v
 		{Name: "requests", Version: "2.31.0", Ecosystem: model.EcosystemPyPI, Source: "other/requirements.txt"},
 	}
 	out, err := Lookup(context.Background(), pkgs)

@@ -117,7 +117,7 @@ func IssueTable(w io.Writer, root string, issues []model.Issue) {
 		}
 		rows[i] = []string{
 			iss.Severity,
-			fmt.Sprintf("%s:%d", relPath(root, iss.File), iss.Line),
+			location(root, iss),
 			rule,
 			iss.Message,
 		}
@@ -292,4 +292,11 @@ func sbomLicenses(l string) *cdx.Licenses {
 // (internal/vex) to match a finding's package against a VEX product.
 func Purl(p model.Package) string {
 	return purl.FromPackage(p)
+}
+
+func location(root string, iss model.Issue) string {
+	if iss.Line > 0 {
+		return fmt.Sprintf("%s:%d", relPath(root, iss.File), iss.Line)
+	}
+	return relPath(root, iss.File)
 }

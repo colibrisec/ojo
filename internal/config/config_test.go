@@ -112,3 +112,26 @@ func TestLoad_UnknownQualityKeyIsAnError(t *testing.T) {
 		t.Error("expected an error for an unrecognized quality key")
 	}
 }
+
+func TestLoad_License(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".ojo.yaml")
+	for _, tc := range []struct {
+		yaml    string
+		wantErr bool
+	}{
+		{"license:\n  deny: [GPL-3.0-only]\n  exceptions: [foo]\n  unknown: fail\n", false},
+		{"license:\n  allow: [MIT]\n  deny: [GPL-3.0-only]\n", true},
+		{"license:\n  allow: [MIT]\n  unknown: maybe\n", true},
+	} {
+		if err := os.WriteFile(path, []byte(tc.yaml), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		c, err := Load(path)
+		if (err != nil) != tc.wantErr {
+			t.Errorf("%q: got err %v, wantErr %v", tc.yaml, err, tc.wantErr)
+		}
+		if err == nil && (len(c.License.Deny) != 1 || c.License.Exceptions[0] != "foo" || c.License.Unknown != "fail") {
+			t.Errorf("%q: parsed %+v", tc.yaml, c.License)
+		}
+	}
+}

@@ -68,7 +68,7 @@ $ ojo fs -f sbom --no-license-lookup . > sbom.json
 
 If a lookup fails, ojo prints a warning and still writes the SBOM, without the licenses that needed the network. A component with no `licenses` entry means the license is unknown, not that the package is unlicensed.
 
-This identifies licenses; it doesn't evaluate them. There's no allow/deny policy or exit code tied to a license — see [Roadmap](../roadmap.md).
+To check licenses against an allow or deny list, use the [license scanner](scanner/license.md).
 
 !!! note
-    `-f sbom` only enumerates packages — it doesn't run the vulnerability scanner or contact OSV.dev, and with `--no-license-lookup` it needs no network access at all. There's no SPDX output format yet, and no SBOM *input* support (ojo can't scan an existing SBOM the way `trivy sbom` can) — see [Roadmap](../roadmap.md).
+    `-f sbom` and `-f spdx` only enumerate packages — they don't run the vulnerability scanner or contact OSV.dev, and with `--no-license-lookup` they need no network access at all.

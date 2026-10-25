@@ -48,6 +48,7 @@ $ mkdocs serve
 | Misconfiguration | Security misconfigurations in Dockerfiles, Kubernetes manifests, Terraform (AWS/Azure/GCP), CloudFormation, MCP server configs, Claude Code skill definitions, and Android APK manifests | Opt-in (`--scanners misconfig`) |
 | SAST | Injection, weak crypto, and other source-level issues in Go (`go/ast`-based), Python, JavaScript/TypeScript, PHP, Ruby, and Java (tree-sitter-based) | Opt-in (`--scanners sast`) |
 | Code quality | Maintainability smells: complexity, function length, nesting depth, parameter count, duplicate code, TODO/FIXME comments | Opt-in (`--scanners quality`) |
+| License | Dependency licenses checked against an allow or deny list in `.ojo.yaml` | Opt-in (`--scanners license`) |
 
 Output is a table by default; `-f json`, `-f sarif`, `-f sbom` (CycloneDX, with package licenses), `-f spdx` (SPDX 2.3), and `-f vex` (OpenVEX) are available on every command, and `ojo fs -g` writes GitLab security reports. Findings can be suppressed with a `.ojoignore` file or an OpenVEX document (`--vex-file`), and flagged against CISA's Known Exploited Vulnerabilities catalog with `--kev`.
 
@@ -62,7 +63,7 @@ $ go build -o ojo .
 
 ## Status
 
-ojo is young — see [Roadmap & Limitations](docs/roadmap.md) for what isn't supported yet (license policy checks, Kubernetes cluster scanning, and more).
+ojo is young — see [Roadmap & Limitations](docs/roadmap.md) for what isn't supported yet (Kubernetes cluster scanning, an offline vulnerability database, and more).
 
 ## License
 

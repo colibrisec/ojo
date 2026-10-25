@@ -111,7 +111,11 @@ func keyFor(p model.Package) (versionKey, bool) {
 	if !ok || p.License != "" || p.Name == "" || p.Version == "" {
 		return versionKey{}, false
 	}
-	return versionKey{System: system, Name: p.Name, Version: p.Version}, true
+	version := p.Version
+	if p.Ecosystem == model.EcosystemGo && !strings.HasPrefix(version, "v") {
+		version = "v" + version // deps.dev keys Go modules by their tag
+	}
+	return versionKey{System: system, Name: p.Name, Version: version}, true
 }
 
 func lookupBatch(ctx context.Context, keys []versionKey, found map[versionKey]string) error {
