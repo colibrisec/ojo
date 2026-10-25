@@ -81,16 +81,30 @@ func warnUnscannable(cmd *cobra.Command, root string, unpinned []manifest.Unscan
 	fmt.Fprintf(cmd.ErrOrStderr(), "warning: %d %s and were not checked for vulnerabilities: %s\n", len(unpinned), what, strings.Join(names, "; "))
 }
 
-// licenseScan checks discovered packages against the .ojo.yaml license
-// policy.
+// licenseScan checks the packages discovered under root against the
+// .ojo.yaml license policy.
 func licenseScan(cmd *cobra.Command, root string, cfg config.License, noLookup bool) ([]model.Issue, error) {
-	if len(cfg.Allow) == 0 && len(cfg.Deny) == 0 && cfg.Unknown != "fail" {
-		return nil, fmt.Errorf("the license scanner needs a policy: set license.allow or license.deny in .ojo.yaml")
+	if err := requirePolicy(cfg); err != nil {
+		return nil, err
 	}
 	pkgs, err := manifest.Discover(root)
 	if err != nil {
 		return nil, fmt.Errorf("discovering manifests: %w", err)
 	}
+	return checkLicenses(cmd, pkgs, cfg, noLookup), nil
+}
+
+func requirePolicy(cfg config.License) error {
+	if len(cfg.Allow) == 0 && len(cfg.Deny) == 0 && cfg.Unknown != "fail" {
+		return fmt.Errorf("the license scanner needs a policy: set license.allow or license.deny in .ojo.yaml")
+	}
+	return nil
+}
+
+// checkLicenses looks up pkgs' licenses and checks them against cfg,
+// warning about unknown licenses unless cfg says otherwise.
+func checkLicenses(cmd *cobra.Command, pkgs []model.Package, cfg config.License, noLookup bool) []model.Issue {
+	fmt.Fprintln(cmd.ErrOrStderr(), "Running license scan...")
 	pkgs = withLicenses(cmd, pkgs, noLookup)
 	policy := license.Policy{Allow: cfg.Allow, Deny: cfg.Deny, Exceptions: cfg.Exceptions, FailUnknown: cfg.Unknown == "fail"}
 	issues, unknown := policy.Check(pkgs)
@@ -106,5 +120,25 @@ func licenseScan(cmd *cobra.Command, root string, cfg config.License, noLookup b
 		}
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: %d package(s) have no known license and weren't checked against the license policy: %s\n", len(unknown), strings.Join(names, ", "))
 	}
-	return issues, nil
+	return issues
+}
+
+// packageScanners parses --scanners for commands that only check a package
+// list (image, sbom).
+func packageScanners(cmd string, scanners string, cfg config.License) (vuln, lic bool, err error) {
+	for _, s := range strings.Split(scanners, ",") {
+		switch strings.TrimSpace(s) {
+		case "vuln":
+			vuln = true
+		case "license":
+			lic = true
+		case "":
+		default:
+			return false, false, fmt.Errorf("unknown scanner %q for ojo %s (available: vuln, license)", strings.TrimSpace(s), cmd)
+		}
+	}
+	if lic {
+		err = requirePolicy(cfg)
+	}
+	return vuln, lic, err
 }

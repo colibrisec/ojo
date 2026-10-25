@@ -1,6 +1,6 @@
 # Scanner: License
 
-Checks the licenses of your dependencies against a policy you set in `.ojo.yaml`. Off by default; enable it with `--scanners license`.
+Checks the licenses of your dependencies against a policy you set in `.ojo.yaml`. Off by default; enable it with `--scanners license` on `ojo fs`, `ojo image`, or `ojo sbom`.
 
 ```yaml
 # .ojo.yaml
@@ -12,9 +12,11 @@ license:
 
 ```console
 $ ojo fs --scanners vuln,license .
+$ ojo image --scanners license nginx:1.27
+$ ojo sbom --scanners license bom.cdx.json
 ```
 
-Licenses come from the same sources as [SBOM output](../sbom.md#licenses): lockfiles that record them, plus [deps.dev](https://deps.dev) and the CocoaPods spec CDN. `--no-license-lookup` skips the online lookups, which leaves most packages without a known license.
+Licenses come from the same sources as [SBOM output](../sbom.md#licenses): lockfiles, image package databases, and SBOMs that record them, plus [deps.dev](https://deps.dev) and the CocoaPods spec CDN. `--no-license-lookup` skips the online lookups, which leaves most packages without a known license.
 
 ## Policy
 
@@ -47,10 +49,9 @@ A license that isn't a valid expression (such as `Apache License 2.0`) is matche
 | `license-not-allowed` | HIGH | A license missing from the `allow` list |
 | `license-unknown` | LOW | No known license, with `unknown: fail` |
 
-Findings point at the manifest the package came from. Like any other finding, they make ojo exit 1 and can be suppressed with [`.ojoignore`](../configuration.md#risk-acceptance-ojoignore) by rule ID and path. To exempt one package, use `exceptions`.
+Findings point at where the package came from: its manifest, the image's package manager (`dpkg`, `apk`, `rpm`), or the SBOM file. Like any other finding, they make ojo exit 1 and can be suppressed with [`.ojoignore`](../configuration.md#risk-acceptance-ojoignore) by rule ID and path. To exempt one package, use `exceptions`.
 
 ## Limitations
 
-- `ojo fs` only. `ojo image` and `ojo sbom` don't run it yet.
 - Only a common subset of SPDX identifiers is recognized; see [SBOM: Licenses](../sbom.md#licenses).
 - Pub and SwiftURL packages never get a license, so they always count as unknown.

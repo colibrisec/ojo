@@ -23,7 +23,7 @@ func Root() *cobra.Command {
 		SilenceUsage:  true,
 		Long: `ojo is a security scanner for dependencies, secrets, misconfig, and code.
 
-Scanners (--scanners, comma-separated, ojo fs only):
+Scanners (--scanners, comma-separated; ojo image and ojo sbom take vuln and license only):
   vuln       known CVEs in dependency manifests (default)
   secret     hardcoded credentials, API keys, tokens
   misconfig  Dockerfile / Kubernetes / Terraform / CloudFormation / MCP / skill / APK misconfiguration

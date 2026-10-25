@@ -7,6 +7,8 @@ $ ojo sbom bom.cdx.json
 $ syft alpine:3.19 -o spdx-json > bom.spdx.json && ojo sbom bom.spdx.json
 ```
 
+`--scanners license` checks the SBOM's licenses against your [license policy](../scanner/license.md) instead of, or alongside (`--scanners vuln,license`), the vulnerability check. Licenses recorded in the SBOM are used as they are; missing ones are looked up online unless you pass `--no-license-lookup`.
+
 ## Formats
 
 | Format | Read |

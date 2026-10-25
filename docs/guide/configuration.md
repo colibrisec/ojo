@@ -70,7 +70,7 @@ $ ojo fs --scanners vuln,secret,misconfig,sast,quality .
 | `quality` | [Code Quality](scanner/quality.md) | ❌ |
 | `license` | [License](scanner/license.md) | ❌ |
 
-Default: `vuln`. An unknown value is an error. `-g`/`--gitlab` overrides this and runs `vuln,secret,misconfig,sast`, plus `quality` if you asked for it. `ojo image` doesn't take `--scanners` — it always runs the vulnerability scanner against the image's OS and Node.js packages.
+Default: `vuln`. An unknown value is an error. `-g`/`--gitlab` overrides this and runs `vuln,secret,misconfig,sast`, plus `quality` if you asked for it. `ojo image` and `ojo sbom` take `vuln` and `license` only, and don't read `scanners` from `.ojo.yaml`.
 
 ## `-f` / `--format`
 

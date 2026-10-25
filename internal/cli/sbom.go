@@ -22,6 +22,8 @@ func sbomCmd() *cobra.Command {
 	var kevFlag bool
 	var vexFile string
 	var sarifOmitSuppressed bool
+	var noLicenseLookup bool
+	var scanners string
 
 	cmd := &cobra.Command{
 		Use:   "sbom [file]",
@@ -42,6 +44,11 @@ func sbomCmd() *cobra.Command {
 				return err
 			}
 
+			runVuln, runLicense, err := packageScanners("sbom", scanners, cfg.License)
+			if err != nil {
+				return err
+			}
+
 			res, err := sbom.Read(path)
 			if err != nil {
 				return err
@@ -53,22 +60,30 @@ func sbomCmd() *cobra.Command {
 				return report.SPDX(cmd.OutOrStdout(), res.Packages, path, Version, time.Now())
 			}
 
-			pkgs, skipped := checkable(res.Packages)
-			warnUnscannable(cmd, "", append(res.Skipped, skipped...), "SBOM entries can't be matched to a package ojo checks")
 			var findings []model.Finding
-			if len(pkgs) > 0 {
-				findings, err = imageVulns(cmd, resolvePods(cmd, pkgs))
-				if err != nil {
-					return err
+			if runVuln {
+				pkgs, skipped := checkable(res.Packages)
+				warnUnscannable(cmd, "", append(res.Skipped, skipped...), "SBOM entries can't be matched to a package ojo checks")
+				if len(pkgs) > 0 {
+					findings, err = imageVulns(cmd, resolvePods(cmd, pkgs))
+					if err != nil {
+						return err
+					}
 				}
 			}
-			return writeFindings(cmd, fmt.Sprintf("%s (%s)", path, res.Format), findings, findingsOutput{
+			var issues []model.Issue
+			if runLicense {
+				issues = checkLicenses(cmd, res.Packages, cfg.License, noLicenseLookup)
+			}
+			return writeFindings(cmd, fmt.Sprintf("%s (%s)", path, res.Format), findings, issues, findingsOutput{
 				format: format, ignoreFile: ignoreFile, vexFile: vexFile, kev: kevFlag, sarifOmitSuppressed: sarifOmitSuppressed,
 			})
 		},
 	}
 
 	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, sbom, spdx, sarif, vex (sbom and spdx convert the input)")
+	cmd.Flags().StringVar(&scanners, "scanners", "vuln", "comma-separated scanners to run: vuln, license")
+	cmd.Flags().BoolVar(&noLicenseLookup, "no-license-lookup", false, noLicenseLookupUsage)
 	cmd.Flags().StringVar(&configPath, "config", "", "path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)")
 	cmd.Flags().StringVar(&ignoreFile, "ignore-file", "", "path to a .ojoignore file (default: .ojoignore in the current directory, if present)")
 	cmd.Flags().StringVar(&cyclonedxVersion, "cyclonedx-version", "", "CycloneDX spec version for -f sbom output, e.g. 1.4 (default: latest)")

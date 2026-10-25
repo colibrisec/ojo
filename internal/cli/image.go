@@ -25,6 +25,7 @@ func imageCmd() *cobra.Command {
 	var vexFile string
 	var sarifOmitSuppressed bool
 	var noLicenseLookup bool
+	var scanners string
 
 	cmd := &cobra.Command{
 		Use:   "image [ref]",
@@ -41,6 +42,10 @@ func imageCmd() *cobra.Command {
 				format = cfg.Format
 			}
 			sbomVersion, err := report.ParseCycloneDXVersion(cyclonedxVersion)
+			if err != nil {
+				return err
+			}
+			runVuln, runLicense, err := packageScanners("image", scanners, cfg.License)
 			if err != nil {
 				return err
 			}
@@ -64,21 +69,28 @@ func imageCmd() *cobra.Command {
 				return report.SPDX(cmd.OutOrStdout(), withLicenses(cmd, pkgs, noLicenseLookup), ref, Version, time.Now())
 			}
 
-			if distro := image.WithoutAdvisories(pkgs); distro != "" {
-				return fmt.Errorf("%s: ojo has no advisories for %q, so its OS packages can't be checked for vulnerabilities (-f sbom still lists them)", ref, distro)
+			var findings []model.Finding
+			if runVuln {
+				if distro := image.WithoutAdvisories(pkgs); distro != "" {
+					return fmt.Errorf("%s: ojo has no advisories for %q, so its OS packages can't be checked for vulnerabilities (-f sbom still lists them, and --scanners license still checks them)", ref, distro)
+				}
+				findings, err = imageVulns(cmd, pkgs)
+				if err != nil {
+					return err
+				}
 			}
-
-			findings, err := imageVulns(cmd, pkgs)
-			if err != nil {
-				return err
+			var issues []model.Issue
+			if runLicense {
+				issues = checkLicenses(cmd, pkgs, cfg.License, noLicenseLookup)
 			}
-			return writeFindings(cmd, fmt.Sprintf("%s (%s)", ref, osLabel), findings, findingsOutput{
+			return writeFindings(cmd, fmt.Sprintf("%s (%s)", ref, osLabel), findings, issues, findingsOutput{
 				format: format, ignoreFile: ignoreFile, vexFile: vexFile, kev: kevFlag, sarifOmitSuppressed: sarifOmitSuppressed,
 			})
 		},
 	}
 
 	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, sbom, spdx, sarif, vex")
+	cmd.Flags().StringVar(&scanners, "scanners", "vuln", "comma-separated scanners to run: vuln, license")
 	cmd.Flags().StringVar(&configPath, "config", "", "path to a .ojo.yaml config file (default: .ojo.yaml in the current directory, if present)")
 	cmd.Flags().StringVar(&ignoreFile, "ignore-file", "", "path to a .ojoignore file (default: .ojoignore in the current directory, if present)")
 	cmd.Flags().StringVar(&platform, "platform", "", "image platform to pull as os/arch, e.g. linux/arm64 (default: linux/amd64)")
@@ -136,9 +148,10 @@ type findingsOutput struct {
 	kev, sarifOmitSuppressed    bool
 }
 
-// writeFindings applies KEV, .ojoignore and VEX to findings and writes them
+// writeFindings applies KEV, .ojoignore and VEX to findings (and
+// .ojoignore to issues) and writes them
 // in the requested format.
-func writeFindings(cmd *cobra.Command, target string, findings []model.Finding, o findingsOutput) error {
+func writeFindings(cmd *cobra.Command, target string, findings []model.Finding, issues []model.Issue, o findingsOutput) error {
 	if o.kev {
 		if err := annotateKEV(cmd, findings); err != nil {
 			return err
@@ -153,15 +166,15 @@ func writeFindings(cmd *cobra.Command, target string, findings []model.Finding, 
 	if err != nil {
 		return fmt.Errorf("loading VEX file: %w", err)
 	}
-	kept, suppressed, _, _ := ignore.Apply(findings, nil, ignoreRules, "", time.Now())
-	findings = kept
+	kept, suppressed, keptIssues, suppressedIssues := ignore.Apply(findings, issues, ignoreRules, "", time.Now())
+	findings, issues = kept, keptIssues
 	if len(vexStatements) > 0 {
 		vexKept, vexSuppressed := vex.Apply(findings, vexStatements)
 		findings = vexKept
 		suppressed = append(suppressed, vexSuppressed...)
 	}
 
-	rep := report.Report{Target: target, Findings: findings, SuppressedFindings: suppressed}
+	rep := report.Report{Target: target, Findings: findings, Issues: issues, SuppressedFindings: suppressed, SuppressedIssues: suppressedIssues}
 	switch o.format {
 	case "json":
 		if err := rep.JSON(cmd.OutOrStdout()); err != nil {
@@ -180,7 +193,7 @@ func writeFindings(cmd *cobra.Command, target string, findings []model.Finding, 
 		rep.Table(cmd.OutOrStdout(), "")
 	}
 
-	if len(findings) > 0 {
+	if len(findings) > 0 || len(issues) > 0 {
 		return ErrFindingsFound
 	}
 	return nil
