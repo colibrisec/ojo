@@ -16,6 +16,7 @@ import (
 	"go/token"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 
 	gts "github.com/odvcencio/gotreesitter"
@@ -58,16 +59,26 @@ func Scan(root string) ([]model.Issue, error) {
 	var issues []model.Issue
 
 	err := walk.Walk(root, func(path string, d fs.DirEntry) error {
+		before := len(issues)
+		defer func() {
+			if isTestFile(relToRoot(root, path)) {
+				issues = append(issues[:before], dropTestExempt(issues[before:])...)
+			}
+		}()
 		switch {
 		case strings.HasSuffix(path, ".go"):
 			f, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 			if err != nil {
 				return nil // ponytail: skip files that don't parse, don't fail the whole scan
 			}
-			goCurrentParamSeed = goComputeParamSeed(f)
-			for _, r := range rules {
-				issues = append(issues, r.check(f, fset, path)...)
-			}
+			issues = append(issues, runEnvSplit(func() []model.Issue {
+				goCurrentParamSeed = goComputeParamSeed(f)
+				var out []model.Issue
+				for _, r := range rules {
+					out = append(out, r.check(f, fset, path)...)
+				}
+				return out
+			})...)
 		case strings.HasSuffix(path, ".py"):
 			pyIssues, err := scanPythonFile(path)
 			if err != nil {
@@ -115,12 +126,14 @@ func scanPythonFile(path string) ([]model.Issue, error) {
 	if err != nil {
 		return nil, err
 	}
-	tsCurrentParamSeed = tsComputeParamSeed(tree.RootNode(), pyLang, src, pyFuncBoundary, funcDefQuery, pyFreeCallQuery, identifierParamName, pyAssignInfo, pyExprTainted)
-	var issues []model.Issue
-	for _, r := range pyRules {
-		issues = append(issues, r.check(tree.RootNode(), src, path)...)
-	}
-	return issues, nil
+	return runEnvSplit(func() []model.Issue {
+		tsCurrentParamSeed = tsComputeParamSeed(tree.RootNode(), pyLang, src, pyFuncBoundary, funcDefQuery, pyFreeCallQuery, identifierParamName, pyAssignInfo, pyExprTainted)
+		var issues []model.Issue
+		for _, r := range pyRules {
+			issues = append(issues, r.check(tree.RootNode(), src, path)...)
+		}
+		return issues
+	}), nil
 }
 
 func scanPHPFile(path string) ([]model.Issue, error) {
@@ -132,12 +145,14 @@ func scanPHPFile(path string) ([]model.Issue, error) {
 	if err != nil {
 		return nil, err
 	}
-	tsCurrentParamSeed = tsComputeParamSeed(tree.RootNode(), phpLang, src, phpFuncBoundary, phpFuncDefQuery, phpFreeCallQuery, phpParamName, phpAssignInfo, phpExprTainted)
-	var issues []model.Issue
-	for _, r := range phpRules {
-		issues = append(issues, r.check(tree.RootNode(), src, path)...)
-	}
-	return issues, nil
+	return runEnvSplit(func() []model.Issue {
+		tsCurrentParamSeed = tsComputeParamSeed(tree.RootNode(), phpLang, src, phpFuncBoundary, phpFuncDefQuery, phpFreeCallQuery, phpParamName, phpAssignInfo, phpExprTainted)
+		var issues []model.Issue
+		for _, r := range phpRules {
+			issues = append(issues, r.check(tree.RootNode(), src, path)...)
+		}
+		return issues
+	}), nil
 }
 
 func scanRubyFile(path string) ([]model.Issue, error) {
@@ -149,12 +164,14 @@ func scanRubyFile(path string) ([]model.Issue, error) {
 	if err != nil {
 		return nil, err
 	}
-	tsCurrentParamSeed = tsComputeParamSeed(tree.RootNode(), rubyLang, src, rubyFuncBoundary, rubyMethodDefQuery, rubyFreeCallQuery, identifierParamName, rubyAssignInfo, rubyExprTainted)
-	var issues []model.Issue
-	for _, r := range rubyRules {
-		issues = append(issues, r.check(tree.RootNode(), src, path)...)
-	}
-	return issues, nil
+	return runEnvSplit(func() []model.Issue {
+		tsCurrentParamSeed = tsComputeParamSeed(tree.RootNode(), rubyLang, src, rubyFuncBoundary, rubyMethodDefQuery, rubyFreeCallQuery, identifierParamName, rubyAssignInfo, rubyExprTainted)
+		var issues []model.Issue
+		for _, r := range rubyRules {
+			issues = append(issues, r.check(tree.RootNode(), src, path)...)
+		}
+		return issues
+	}), nil
 }
 
 func scanJavaFile(path string) ([]model.Issue, error) {
@@ -166,12 +183,14 @@ func scanJavaFile(path string) ([]model.Issue, error) {
 	if err != nil {
 		return nil, err
 	}
-	tsCurrentParamSeed = tsComputeParamSeed(tree.RootNode(), javaLang, src, javaFuncBoundary, javaMethodDefQuery, javaFreeCallQuery, identifierParamName, javaAssignInfo, javaExprTainted)
-	var issues []model.Issue
-	for _, r := range javaRules {
-		issues = append(issues, r.check(tree.RootNode(), src, path)...)
-	}
-	return issues, nil
+	return runEnvSplit(func() []model.Issue {
+		tsCurrentParamSeed = tsComputeParamSeed(tree.RootNode(), javaLang, src, javaFuncBoundary, javaMethodDefQuery, javaFreeCallQuery, identifierParamName, javaAssignInfo, javaExprTainted)
+		var issues []model.Issue
+		for _, r := range javaRules {
+			issues = append(issues, r.check(tree.RootNode(), src, path)...)
+		}
+		return issues
+	}), nil
 }
 
 // jsLangForPath maps a file extension to the grammar that parses it, or nil
@@ -199,12 +218,22 @@ func scanJSFile(path string, lang *gts.Language) ([]model.Issue, error) {
 	if err != nil {
 		return nil, err
 	}
-	tsCurrentParamSeed = tsComputeParamSeed(tree.RootNode(), lang, src, jsFuncBoundary, jsFuncDeclQuery.forLang(lang), jsFreeCallQuery.forLang(lang), identifierParamName, jsAssignInfo, jsExprTainted)
-	var issues []model.Issue
-	for _, r := range jsRules {
-		issues = append(issues, r.check(tree.RootNode(), lang, src, path)...)
+	return runEnvSplit(func() []model.Issue {
+		tsCurrentParamSeed = tsComputeParamSeed(tree.RootNode(), lang, src, jsFuncBoundary, jsFuncDeclQuery.forLang(lang), jsFreeCallQuery.forLang(lang), identifierParamName, jsAssignInfo, jsExprTainted)
+		var issues []model.Issue
+		for _, r := range jsRules {
+			issues = append(issues, r.check(tree.RootNode(), lang, src, path)...)
+		}
+		return issues
+	}), nil
+}
+
+func relToRoot(root, path string) string {
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == "." {
+		return filepath.Base(path)
 	}
-	return issues, nil
+	return rel
 }
 
 func issueAt(id, severity, path, title, message string, fset *token.FileSet, pos token.Pos) model.Issue {

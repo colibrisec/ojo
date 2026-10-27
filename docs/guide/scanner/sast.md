@@ -10,6 +10,17 @@ Off by default — enable with `--scanners sast`.
 
 Every rule up through the previous round was security-shaped: a suspicious sink, a dangerous API, tainted input reaching one — SonarQube's "Vulnerability" category. This round added ojo's first "Bug"/reliability rules — `*-empty-exception-handler`, `*-empty-block`, `*-unreachable-code` — plain correctness issues with no security angle at all (a silently-swallowed exception, dead code after a `return`). They're not a separate scanner or `--scanners` value: they run as part of `sast` alongside everything else, distinguishable only by rule ID and by reading the rule tables below — ojo's `model.Issue` has no `Category`/`Type` field to filter on yet, since nothing downstream (report formats, `--exit-code`) needed that distinction before now. Add one if a consumer actually needs to filter Bug from Vulnerability findings; don't add it speculatively.
 
+## False-positive policy
+
+These apply to every language. Each one comes from a triaged false positive, and `internal/sast/fp_corpus_test.go` keeps a must-not-fire case for each one next to a must-fire twin.
+
+- **Environment variables are deployment config, not request input.** Whoever sets a process's environment already controls the process. When the only taint source behind a finding is an env read (`os.Getenv`, `os.environ`, `process.env`, `getenv()`, `ENV[]`, `System.getenv`), location-style sinks (path traversal, SSRF, open redirect, SQL/NoSQL, SSTI, XXE) don't report it. Code-execution sinks (`*-command-injection`, `*-eval-*`, `*-unsafe-reflection`, `py-agent-unsandboxed-exec`) report it at LOW, with a message saying the value came from the environment, because env can carry untrusted data in CI jobs and wrapper scripts. Request-derived taint and string building are unchanged and keep their severity. This follows CodeQL, whose default threat model leaves out "local" sources such as the environment.
+- **Test code has no attacker.** The input-driven rules (`command-injection`, `sql-injection`, `nosqli`, `path-traversal`, `lfi-include`, `ssrf`, `open-redirect`, `ssti`, `unsafe-reflection`) skip test files: `_test.go`; `test_*.py`, `*_test.py`, `conftest.py`; `*.test.*`/`*.spec.*` JS/TS; `*_spec.rb`, `*_test.rb`; `*Test.java`, `*Tests.java`, `*IT.java`; `*Test.php`; and anything under a `test`, `tests`, `testdata`, `fixtures`, `__tests__`, `mocks`, `__mocks__` or `spec` directory relative to the scan root (the same directories the secret scanner treats as test paths). Other rules, such as hardcoded secrets and disabled TLS verification, still run on tests. gosec goes further and skips test files for every rule by default.
+- **`js-ssrf` skips same-origin relative URLs.** A URL that starts with a fixed `/path` (`` fetch(`/api/v2${path}`) ``) can't choose the host. `//host` is protocol-relative and still counts.
+- **Unreachable code ignores comments.** A comment after a `return` isn't a statement. tree-sitter-python also attaches a comment indented under an early `return` to that block.
+- **`py-empty-exception-handler` only flags bare `except:` and `except Exception`/`BaseException`.** A narrowly typed `except ImportError: pass` is deliberate. This matches Bandit's B110 default.
+- **`js-react-dangerously-set-innerhtml` skips sanitized values.** It doesn't report an `__html` value that is a `DOMPurify.sanitize(...)`/`sanitize(...)`/`sanitizeHtml(...)` call, or a local variable assigned from one.
+
 ## Custom rules
 
 Write your own rules without touching ojo's source, in YAML, one rule per `.yaml`/`.yml` file:

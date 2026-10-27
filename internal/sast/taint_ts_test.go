@@ -50,7 +50,8 @@ func TestPythonTaintTrackingThroughLocalVariable(t *testing.T) {
 	for _, i := range issues {
 		counts[i.RuleID]++
 	}
-	want := map[string]int{"py-open-redirect": 2, "py-path-traversal": 1, "py-sql-injection": 1}
+	want := map[string]int{"py-open-redirect": 1, // env_redirect: env-only source, dropped for redirects
+		"py-path-traversal": 1, "py-sql-injection": 1}
 	for id, n := range want {
 		if counts[id] != n {
 			t.Errorf("%s: got %d, want %d (issues: %+v)", id, counts[id], n, issues)

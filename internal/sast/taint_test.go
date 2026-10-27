@@ -69,7 +69,7 @@ func TestGoTaintTrackingThroughLocalVariable(t *testing.T) {
 	}
 
 	want := map[string]int{
-		"go-open-redirect":     2, // redirectHandler + envHandler (via os.Getenv)
+		"go-open-redirect":     1, // redirectHandler; envHandler is env-only, dropped for redirects
 		"go-path-traversal":    1,
 		"go-command-injection": 1,
 		"go-sql-injection":     1,

@@ -276,6 +276,9 @@ func javaAssignInfo(n *gts.Node, lang *gts.Language, src []byte) (string, *gts.N
 
 // javaIsEnvSource matches System.getenv(...) by raw text.
 func javaIsEnvSource(n *gts.Node, src []byte) bool {
+	if !envTaintSources {
+		return false
+	}
 	return strings.HasPrefix(string(n.Text(src)), "System.getenv(")
 }
 
@@ -648,9 +651,13 @@ func checkJavaUnreachableCode(root *gts.Node, src []byte, path string) []model.I
 	var issues []model.Issue
 	for _, m := range javaUnreachableQuery.ExecuteNode(root, javaLang, src) {
 		caps := javaCapMap(m)
+		after := tsSkipComments(caps["after"], javaLang)
+		if after == nil {
+			continue
+		}
 		issues = append(issues, javaIssueAt("java-unreachable-code", "LOW", path,
 			"Unreachable code", "this statement can never execute; it follows a "+string(caps["term"].Text(src))+" in the same block",
-			caps["after"]))
+			after))
 	}
 	return issues
 }

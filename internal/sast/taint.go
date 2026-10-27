@@ -224,6 +224,9 @@ func goExprTainted(e ast.Expr, env map[string]bool) bool {
 }
 
 func goIsEnvSource(e ast.Expr) bool {
+	if !envTaintSources {
+		return false
+	}
 	call, ok := e.(*ast.CallExpr)
 	if !ok {
 		return false

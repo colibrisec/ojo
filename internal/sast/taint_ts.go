@@ -1,6 +1,10 @@
 package sast
 
-import gts "github.com/odvcencio/gotreesitter"
+import (
+	"strings"
+
+	gts "github.com/odvcencio/gotreesitter"
+)
 
 // Shared scaffolding for intraprocedural taint tracking across the
 // tree-sitter-backed languages (Python, JS/TS/TSX, PHP, Ruby, Java) — the
@@ -101,4 +105,15 @@ func tsTaintEnvWithSeed(
 		})
 	}
 	return env
+}
+
+// tsSkipComments returns n, or the first named sibling after it that isn't a
+// comment; nil if there is none. A comment after a return is not dead code.
+func tsSkipComments(n *gts.Node, lang *gts.Language) *gts.Node {
+	for ; n != nil; n = n.NextSibling() {
+		if n.IsNamed() && !strings.Contains(n.Type(lang), "comment") {
+			return n
+		}
+	}
+	return nil
 }

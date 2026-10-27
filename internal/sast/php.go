@@ -113,6 +113,9 @@ func phpRootedAtSuperglobal(n *gts.Node, src []byte) bool {
 
 // phpIsEnvSource matches getenv(...) by raw text.
 func phpIsEnvSource(n *gts.Node, src []byte) bool {
+	if !envTaintSources {
+		return false
+	}
 	return strings.HasPrefix(string(n.Text(src)), "getenv(")
 }
 
@@ -742,9 +745,13 @@ func checkPHPUnreachableCode(root *gts.Node, src []byte, path string) []model.Is
 	var issues []model.Issue
 	for _, m := range phpUnreachableQuery.ExecuteNode(root, phpLang, src) {
 		caps := phpCapMap(m)
+		after := tsSkipComments(caps["after"], phpLang)
+		if after == nil {
+			continue
+		}
 		issues = append(issues, phpIssueAt("php-unreachable-code", "LOW", path,
 			"Unreachable code", "this statement can never execute; it follows a "+string(caps["term"].Text(src))+" in the same block",
-			caps["after"]))
+			after))
 	}
 	return issues
 }

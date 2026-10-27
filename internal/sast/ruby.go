@@ -318,6 +318,9 @@ func rubyAssignInfo(n *gts.Node, lang *gts.Language, src []byte) (string, *gts.N
 
 // rubyIsEnvSource matches ENV[...]/ENV.fetch(...) by raw text.
 func rubyIsEnvSource(n *gts.Node, src []byte) bool {
+	if !envTaintSources {
+		return false
+	}
 	text := string(n.Text(src))
 	return strings.HasPrefix(text, "ENV[") || strings.HasPrefix(text, "ENV.fetch(")
 }
@@ -735,9 +738,13 @@ func checkRubyUnreachableCode(root *gts.Node, src []byte, path string) []model.I
 	for _, q := range []*gts.Query{rubyUnreachableThenQuery, rubyUnreachableBodyQuery} {
 		for _, m := range q.ExecuteNode(root, rubyLang, src) {
 			caps := rubyCapMap(m)
+			after := tsSkipComments(caps["after"], rubyLang)
+			if after == nil {
+				continue
+			}
 			issues = append(issues, rubyIssueAt("ruby-unreachable-code", "LOW", path,
 				"Unreachable code", "this statement can never execute; it follows a "+string(caps["term"].Text(src))+" in the same block",
-				caps["after"]))
+				after))
 		}
 	}
 	return issues

@@ -1,6 +1,7 @@
 package sast
 
 import (
+	"regexp"
 	"strings"
 
 	gts "github.com/odvcencio/gotreesitter"
@@ -304,6 +305,36 @@ func checkJSDOMXSSInnerHTML(root *gts.Node, lang *gts.Language, src []byte, path
 
 var dangerouslySetInnerHTMLQuery = mustJSXQuery(`(jsx_attribute (property_identifier) @attr (#eq? @attr "dangerouslySetInnerHTML")) @jsxattr`)
 
+var (
+	jsHTMLValueRe   = regexp.MustCompile(`__html\s*:\s*([^}]+?)\s*,?\s*}`)
+	jsSanitizerCall = `(?:\w+\.)?sanitize(?:Html)?\(`
+	jsSanitizedRe   = regexp.MustCompile(`^` + jsSanitizerCall)
+	jsIdentRe       = regexp.MustCompile(`^[A-Za-z_$][\w$]*$`)
+)
+
+// jsHTMLSanitized reports whether the __html value is a sanitizer call
+// (DOMPurify.sanitize, sanitizeHtml, ...) or a local variable assigned
+// from one in the same function.
+func jsHTMLSanitized(attr *gts.Node, lang *gts.Language, src []byte) bool {
+	m := jsHTMLValueRe.FindStringSubmatch(attr.Text(src))
+	if m == nil {
+		return false
+	}
+	value := m[1]
+	if jsSanitizedRe.MatchString(value) {
+		return true
+	}
+	if !jsIdentRe.MatchString(value) {
+		return false
+	}
+	body := tsEnclosingBody(attr, lang, jsFuncBoundary)
+	if body == nil {
+		return false
+	}
+	assign := regexp.MustCompile(`\b` + regexp.QuoteMeta(value) + `\s*=\s*` + jsSanitizerCall)
+	return assign.MatchString(body.Text(src))
+}
+
 func checkJSReactDangerouslySetInnerHTML(root *gts.Node, lang *gts.Language, src []byte, path string) []model.Issue {
 	q := dangerouslySetInnerHTMLQuery.forLang(lang)
 	if q == nil {
@@ -311,6 +342,9 @@ func checkJSReactDangerouslySetInnerHTML(root *gts.Node, lang *gts.Language, src
 	}
 	var issues []model.Issue
 	for _, m := range q.ExecuteNode(root, lang, src) {
+		if jsHTMLSanitized(jsCapMap(m)["jsxattr"], lang, src) {
+			continue
+		}
 		issues = append(issues, jsIssueAt("js-react-dangerously-set-innerhtml", "MEDIUM", path,
 			"dangerouslySetInnerHTML used", "dangerouslySetInnerHTML bypasses React's escaping; ensure the __html value is sanitized",
 			jsCapMap(m)["jsxattr"]))
@@ -364,6 +398,9 @@ func jsAssignInfo(n *gts.Node, lang *gts.Language, src []byte) (string, *gts.Nod
 // jsIsEnvSource matches process.env.X/process.env['X'] by raw text rather
 // than decomposing the member/subscript-expression shape.
 func jsIsEnvSource(n *gts.Node, _ *gts.Language, src []byte) bool {
+	if !envTaintSources {
+		return false
+	}
 	text := string(n.Text(src))
 	return strings.HasPrefix(text, "process.env.") || strings.HasPrefix(text, "process.env[")
 }
@@ -602,7 +639,7 @@ func checkJSSSRF(root *gts.Node, lang *gts.Language, src []byte, path string) []
 	for _, m := range fetchCallQuery.forLang(lang).ExecuteNode(root, lang, src) {
 		caps := jsCapMap(m)
 		arg := caps["arg"]
-		if !jsIsDynamicString(arg, lang, src) && !jsTaintedArg(arg, lang, src) {
+		if jsRelativeURL(arg, lang, src) || (!jsIsDynamicString(arg, lang, src) && !jsTaintedArg(arg, lang, src)) {
 			continue
 		}
 		issues = append(issues, jsIssueAt("js-ssrf", "HIGH", path,
@@ -613,7 +650,7 @@ func checkJSSSRF(root *gts.Node, lang *gts.Language, src []byte, path string) []
 	for _, m := range axiosCallQuery.forLang(lang).ExecuteNode(root, lang, src) {
 		caps := jsCapMap(m)
 		arg := caps["arg"]
-		if !jsIsDynamicString(arg, lang, src) && !jsTaintedArg(arg, lang, src) {
+		if jsRelativeURL(arg, lang, src) || (!jsIsDynamicString(arg, lang, src) && !jsTaintedArg(arg, lang, src)) {
 			continue
 		}
 		issues = append(issues, jsIssueAt("js-ssrf", "HIGH", path,
@@ -622,6 +659,26 @@ func checkJSSSRF(root *gts.Node, lang *gts.Language, src []byte, path string) []
 			caps["call"]))
 	}
 	return issues
+}
+
+// jsRelativeURL reports whether a URL expression starts with a fixed
+// same-origin path ("/api/..."), so the host can't be chosen by its
+// dynamic parts. "//host" is protocol-relative and doesn't count.
+func jsRelativeURL(n *gts.Node, lang *gts.Language, src []byte) bool {
+	for n.Type(lang) == "binary_expression" {
+		left := n.ChildByFieldName("left", lang)
+		if left == nil {
+			return false
+		}
+		n = left
+	}
+	switch n.Type(lang) {
+	case "template_string", "string":
+	default:
+		return false
+	}
+	text := string(n.Text(src))
+	return len(text) >= 2 && text[1] == '/' && (len(text) < 3 || text[2] != '/')
 }
 
 var ejsCallQuery = mustTriQuery(`(call_expression function: (member_expression object: (identifier) @obj property: (property_identifier) @meth) arguments: (arguments . (_) @arg) (#eq? @obj "ejs") (#any-of? @meth "render" "compile")) @call`)
@@ -784,9 +841,13 @@ func checkJSUnreachableCode(root *gts.Node, lang *gts.Language, src []byte, path
 	var issues []model.Issue
 	for _, m := range jsUnreachableQuery.forLang(lang).ExecuteNode(root, lang, src) {
 		caps := jsCapMap(m)
+		after := tsSkipComments(caps["after"], lang)
+		if after == nil {
+			continue
+		}
 		issues = append(issues, jsIssueAt("js-unreachable-code", "LOW", path,
 			"Unreachable code", "this statement can never execute; it follows a "+string(caps["term"].Text(src))+" in the same block",
-			caps["after"]))
+			after))
 	}
 	return issues
 }
