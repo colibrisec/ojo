@@ -527,13 +527,12 @@ func checkPySSRF(root *gts.Node, src []byte, path string) []model.Issue {
 	for _, m := range requestsSSRFQuery.ExecuteNode(root, pyLang, src) {
 		caps := capMap(m)
 		arg := caps["arg"]
-		if !pyIsDynamicString(arg, src) && !pyTaintedArg(arg, src) {
+		level := pyURL.classify(arg, src)
+		if level == ssrfNone {
 			continue
 		}
-		issues = append(issues, pyIssueAt("py-ssrf", "HIGH", path,
-			"Outbound request URL built from request data",
-			"requests."+string(caps["fn"].Text(src))+"(...) URL argument is derived from request/env input (directly, or through a local variable) or built via f-string/%/concatenation/.format rather than a validated/allowlisted URL",
-			caps["call"]))
+		severity, title, message := ssrfText(level, "requests."+string(caps["fn"].Text(src))+"(...)")
+		issues = append(issues, pyIssueAt("py-ssrf", severity, path, title, message, caps["call"]))
 	}
 	return issues
 }

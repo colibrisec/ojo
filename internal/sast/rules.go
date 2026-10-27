@@ -350,15 +350,33 @@ func goRootedAtRequest(e ast.Expr) bool {
 		case *ast.SelectorExpr:
 			e = v.X
 		case *ast.CallExpr:
+			if goIsRequestContext(v) {
+				return false
+			}
 			e = v.Fun
 		case *ast.IndexExpr:
 			e = v.X
 		case *ast.Ident:
-			return v.Name == "r" || v.Name == "req" || v.Name == "request"
+			return goRequestName(v.Name)
 		default:
 			return false
 		}
 	}
+}
+
+// goIsRequestContext matches r.Context(): its values are set server-side by
+// middleware (auth, tenant), not sent by the client.
+func goIsRequestContext(call *ast.CallExpr) bool {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Context" || len(call.Args) != 0 {
+		return false
+	}
+	id, ok := sel.X.(*ast.Ident)
+	return ok && goRequestName(id.Name)
+}
+
+func goRequestName(name string) bool {
+	return name == "r" || name == "req" || name == "request"
 }
 
 func checkOpenRedirect(f *ast.File, fset *token.FileSet, path string) []model.Issue {
@@ -546,10 +564,11 @@ func checkPathTraversal(f *ast.File, fset *token.FileSet, path string) []model.I
 
 var httpDirectSSRFFuncs = map[string]bool{"Get": true, "Post": true, "Head": true, "PostForm": true}
 
-// checkSSRF flags an outbound HTTP request whose URL is built from
-// request/env data: net/http's package-level Get/Post/Head/PostForm (URL is
-// the first argument) and NewRequest/NewRequestWithContext (URL is the
-// method/URL-taking argument, not the leading context.Context).
+// checkSSRF flags an outbound HTTP request whose URL carries request data:
+// net/http's package-level Get/Post/Head/PostForm (URL is the first
+// argument) and NewRequest/NewRequestWithContext (URL is the method/URL-taking
+// argument, not the leading context.Context). HIGH when input can choose the
+// host, LOW when only the path or query (see classifySSRF).
 func checkSSRF(f *ast.File, fset *token.FileSet, path string) []model.Issue {
 	pkg, ok := importedAs(f, "net/http")
 	if !ok {
@@ -558,6 +577,7 @@ func checkSSRF(f *ast.File, fset *token.FileSet, path string) []model.Issue {
 	var issues []model.Issue
 	forEachGoFuncBody(f, func(body *ast.BlockStmt) {
 		env := goTaintEnv(body)
+		assigns := goLocalAssigns(body)
 		inspectWithinFunc(body, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
@@ -582,13 +602,12 @@ func checkSSRF(f *ast.File, fset *token.FileSet, path string) []model.Issue {
 			default:
 				return true
 			}
-			if !isDynamicString(urlArg) && !goExprTainted(urlArg, env) {
+			level := classifySSRF(goURLPieces(urlArg, env, assigns, 0))
+			if level == ssrfNone {
 				return true
 			}
-			issues = append(issues, issueAt("go-ssrf", "HIGH", path,
-				"Outbound request URL built from request data",
-				pkg+"."+sel.Sel.Name+" URL argument is built via Sprintf/concatenation, or is a local variable derived from request/env input, rather than a validated/allowlisted URL",
-				fset, call.Pos()))
+			severity, title, message := ssrfText(level, pkg+"."+sel.Sel.Name)
+			issues = append(issues, issueAt("go-ssrf", severity, path, title, message, fset, call.Pos()))
 			return true
 		})
 	})

@@ -3,6 +3,7 @@ package sast
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -15,7 +16,10 @@ const goSSRFFixture = `package main
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 )
+
+type client struct{ baseURL string }
 
 func direct(r *http.Request) {
 	target := r.URL.Query().Get("url")
@@ -27,8 +31,30 @@ func request(r *http.Request) {
 	http.NewRequest("GET", target, nil)
 }
 
-func sprintf(id string) {
+func sprintfHostFromInput(r *http.Request) {
+	http.Get(fmt.Sprintf("%s/healthz", r.FormValue("base")))
+}
+
+func hostConcat(r *http.Request) {
+	http.Get("https://" + r.FormValue("host") + "/x")
+}
+
+func parsed(r *http.Request) {
+	u, _ := url.Parse(r.FormValue("u"))
+	http.Get(u.String())
+}
+
+func sprintf(r *http.Request) {
+	id := r.URL.Query().Get("id")
 	http.Get(fmt.Sprintf("https://internal/%s", id))
+}
+
+func (c *client) configBase(r *http.Request) {
+	http.Get(c.baseURL + "/items/" + r.FormValue("id"))
+}
+
+func (c *client) configOnly(path string) {
+	http.Get(c.baseURL + path)
 }
 
 func safe() {
@@ -36,6 +62,8 @@ func safe() {
 }
 `
 
+// TestGoSSRF pins the three-way split: HIGH when input can choose the
+// host, LOW when only the path, nothing when no request data is involved.
 func TestGoSSRF(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(goSSRFFixture), 0o644); err != nil {
@@ -45,14 +73,33 @@ func TestGoSSRF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	count := 0
+	got := map[int]string{}
 	for _, i := range issues {
 		if i.RuleID == "go-ssrf" {
-			count++
+			got[i.Line] = i.Severity
 		}
 	}
-	if count != 3 {
-		t.Errorf("expected 3 go-ssrf issues (direct/request/sprintf, not safe), got %d: %+v", count, issues)
+	want := map[int]string{
+		13: "HIGH", // direct
+		18: "HIGH", // request
+		22: "HIGH", // Sprintf("%s/...")
+		26: "HIGH", // "https://" + host
+		31: "HIGH", // url.Parse(input)
+		36: "LOW",  // Sprintf("https://internal/%s", id)
+		40: "LOW",  // c.baseURL + "/items/" + id
+	}
+	if len(got) != len(want) {
+		t.Errorf("got %d go-ssrf findings, want %d: %v", len(got), len(want), got)
+	}
+	for line, sev := range want {
+		if got[line] != sev {
+			t.Errorf("line %d: got %q, want %s (all: %v)", line, got[line], sev, got)
+		}
+	}
+	for _, i := range issues {
+		if i.RuleID == "go-ssrf" && i.Line == 36 && !strings.Contains(i.Message, "host is fixed, but request input chooses the path or query") {
+			t.Errorf("LOW message should say the host is fixed: %q", i.Message)
+		}
 	}
 }
 
@@ -230,5 +277,50 @@ func TestJavaSSRF(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("expected 1 java-ssrf issue, got %d: %+v", count, issues)
+	}
+}
+
+// TestSSRFSeveritySplit checks the HIGH/LOW/none split in each tree-sitter
+// language: request input choosing the host, only the path, or nothing.
+func TestSSRFSeveritySplit(t *testing.T) {
+	cases := []struct {
+		name, file, rule, code, want string
+	}{
+		{"py host", "a.py", "py-ssrf", "import requests\nfrom flask import request\ndef f():\n    requests.get(f\"https://{request.args['h']}/x\")\n", "HIGH"},
+		{"py path", "a.py", "py-ssrf", "import requests\nfrom flask import request\ndef f():\n    p = request.args['p']\n    requests.get(\"https://api.internal/items/\" + p)\n", "LOW"},
+		{"py config", "a.py", "py-ssrf", "import requests\nBASE = 'https://api.internal'\ndef f(path):\n    requests.get(f\"{BASE}/{path}\")\n", ""},
+		{"php host", "a.php", "php-ssrf", "<?php\nfunction f() {\n  file_get_contents(\"https://\" . $_GET['h'] . \"/x\");\n}\n", "HIGH"},
+		{"php path", "a.php", "php-ssrf", "<?php\nfunction f() {\n  $id = $_GET['id'];\n  file_get_contents(\"https://api.internal/items/$id\");\n}\n", "LOW"},
+		{"php config", "a.php", "php-ssrf", "<?php\nfunction f($base, $p) {\n  file_get_contents($base . $p);\n}\n", ""},
+		{"ruby host", "a.rb", "ruby-ssrf", "def f\n  Net::HTTP.get(\"https://#{params[:h]}/x\")\nend\n", "HIGH"},
+		{"ruby path", "a.rb", "ruby-ssrf", "def f\n  id = params[:id]\n  Net::HTTP.get(\"https://api.internal/items/#{id}\")\nend\n", "LOW"},
+		{"ruby config", "a.rb", "ruby-ssrf", "def f(base, path)\n  Net::HTTP.get(base + path)\nend\n", ""},
+		{"java host", "A.java", "java-ssrf", "import javax.servlet.http.*;\nimport java.net.URL;\nclass A {\n  void f(HttpServletRequest request) throws Exception {\n    new URL(\"https://\" + request.getParameter(\"h\") + \"/x\");\n  }\n}\n", "HIGH"},
+		{"java path", "A.java", "java-ssrf", "import javax.servlet.http.*;\nimport java.net.URL;\nclass A {\n  void f(HttpServletRequest request) throws Exception {\n    String id = request.getParameter(\"id\");\n    new URL(\"https://api.internal/items/\" + id);\n  }\n}\n", "LOW"},
+		{"java config", "A.java", "java-ssrf", "import java.net.URL;\nclass A {\n  String base;\n  void f(String path) throws Exception {\n    new URL(base + path);\n  }\n}\n", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, c.file), []byte(c.code), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			issues, err := Scan(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got []string
+			for _, i := range issues {
+				if i.RuleID == c.rule {
+					got = append(got, i.Severity)
+				}
+			}
+			switch {
+			case c.want == "" && len(got) > 0:
+				t.Errorf("want no %s finding, got %v", c.rule, got)
+			case c.want != "" && (len(got) != 1 || got[0] != c.want):
+				t.Errorf("want one %s %s finding, got %v", c.want, c.rule, got)
+			}
+		})
 	}
 }

@@ -639,46 +639,24 @@ func checkJSSSRF(root *gts.Node, lang *gts.Language, src []byte, path string) []
 	for _, m := range fetchCallQuery.forLang(lang).ExecuteNode(root, lang, src) {
 		caps := jsCapMap(m)
 		arg := caps["arg"]
-		if jsRelativeURL(arg, lang, src) || (!jsIsDynamicString(arg, lang, src) && !jsTaintedArg(arg, lang, src)) {
+		level := jsURLSplitter(lang).classify(arg, src)
+		if level == ssrfNone {
 			continue
 		}
-		issues = append(issues, jsIssueAt("js-ssrf", "HIGH", path,
-			"Outbound request URL built from request data",
-			"fetch(...) URL argument is derived from request/env input (directly, or through a local variable) or built via template-literal interpolation/concatenation rather than a validated/allowlisted URL",
-			caps["call"]))
+		severity, title, message := ssrfText(level, "fetch(...)")
+		issues = append(issues, jsIssueAt("js-ssrf", severity, path, title, message, caps["call"]))
 	}
 	for _, m := range axiosCallQuery.forLang(lang).ExecuteNode(root, lang, src) {
 		caps := jsCapMap(m)
 		arg := caps["arg"]
-		if jsRelativeURL(arg, lang, src) || (!jsIsDynamicString(arg, lang, src) && !jsTaintedArg(arg, lang, src)) {
+		level := jsURLSplitter(lang).classify(arg, src)
+		if level == ssrfNone {
 			continue
 		}
-		issues = append(issues, jsIssueAt("js-ssrf", "HIGH", path,
-			"Outbound request URL built from request data",
-			"axios."+string(caps["meth"].Text(src))+"(...) URL argument is derived from request/env input (directly, or through a local variable) or built via template-literal interpolation/concatenation rather than a validated/allowlisted URL",
-			caps["call"]))
+		severity, title, message := ssrfText(level, "axios."+string(caps["meth"].Text(src))+"(...)")
+		issues = append(issues, jsIssueAt("js-ssrf", severity, path, title, message, caps["call"]))
 	}
 	return issues
-}
-
-// jsRelativeURL reports whether a URL expression starts with a fixed
-// same-origin path ("/api/..."), so the host can't be chosen by its
-// dynamic parts. "//host" is protocol-relative and doesn't count.
-func jsRelativeURL(n *gts.Node, lang *gts.Language, src []byte) bool {
-	for n.Type(lang) == "binary_expression" {
-		left := n.ChildByFieldName("left", lang)
-		if left == nil {
-			return false
-		}
-		n = left
-	}
-	switch n.Type(lang) {
-	case "template_string", "string":
-	default:
-		return false
-	}
-	text := string(n.Text(src))
-	return len(text) >= 2 && text[1] == '/' && (len(text) < 3 || text[2] != '/')
 }
 
 var ejsCallQuery = mustTriQuery(`(call_expression function: (member_expression object: (identifier) @obj property: (property_identifier) @meth) arguments: (arguments . (_) @arg) (#eq? @obj "ejs") (#any-of? @meth "render" "compile")) @call`)

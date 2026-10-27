@@ -497,13 +497,12 @@ func checkJavaSSRF(root *gts.Node, src []byte, path string) []model.Issue {
 	for _, m := range javaURLNewQuery.ExecuteNode(root, javaLang, src) {
 		caps := javaCapMap(m)
 		arg := caps["arg"]
-		if !javaIsDynamicString(arg, src) && !javaTaintedArg(arg, src) {
+		level := javaURL.classify(arg, src)
+		if level == ssrfNone {
 			continue
 		}
-		issues = append(issues, javaIssueAt("java-ssrf", "HIGH", path,
-			"Outbound request URL built from request data",
-			"new URL(...) argument is derived from request input (directly, or through a local variable) or built via `+` concatenation rather than a validated/allowlisted URL",
-			caps["call"]))
+		severity, title, message := ssrfText(level, "new URL(...)")
+		issues = append(issues, javaIssueAt("java-ssrf", severity, path, title, message, caps["call"]))
 	}
 	return issues
 }

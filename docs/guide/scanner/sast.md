@@ -16,7 +16,12 @@ These apply to every language. Each one comes from a triaged false positive, and
 
 - **Environment variables are deployment config, not request input.** Whoever sets a process's environment already controls the process. When the only taint source behind a finding is an env read (`os.Getenv`, `os.environ`, `process.env`, `getenv()`, `ENV[]`, `System.getenv`), location-style sinks (path traversal, SSRF, open redirect, SQL/NoSQL, SSTI, XXE) don't report it. Code-execution sinks (`*-command-injection`, `*-eval-*`, `*-unsafe-reflection`, `py-agent-unsandboxed-exec`) report it at LOW, with a message saying the value came from the environment, because env can carry untrusted data in CI jobs and wrapper scripts. Request-derived taint and string building are unchanged and keep their severity. This follows CodeQL, whose default threat model leaves out "local" sources such as the environment.
 - **Test code has no attacker.** The input-driven rules (`command-injection`, `sql-injection`, `nosqli`, `path-traversal`, `lfi-include`, `ssrf`, `open-redirect`, `ssti`, `unsafe-reflection`) skip test files: `_test.go`; `test_*.py`, `*_test.py`, `conftest.py`; `*.test.*`/`*.spec.*` JS/TS; `*_spec.rb`, `*_test.rb`; `*Test.java`, `*Tests.java`, `*IT.java`; `*Test.php`; and anything under a `test`, `tests`, `testdata`, `fixtures`, `__tests__`, `mocks`, `__mocks__` or `spec` directory relative to the scan root (the same directories the secret scanner treats as test paths). Other rules, such as hardcoded secrets and disabled TLS verification, still run on tests. gosec goes further and skips test files for every rule by default.
-- **`js-ssrf` skips same-origin relative URLs.** A URL that starts with a fixed `/path` (`` fetch(`/api/v2${path}`) ``) can't choose the host. `//host` is protocol-relative and still counts.
+- **`*-ssrf` requires request taint and splits by what the input controls.** A URL is split into its literal and expression parts, left to right, and judged by the fixed prefix before the first request-derived part:
+  - **HIGH:** input can choose the scheme, host or port. Examples: the whole URL from input, `"https://" + host`, `url.Parse(input)`, `Sprintf("%s/path", input)`, or a literal that stops before the host ends (`"https://api.example.com" + input`, where input could be `@evil`).
+  - **LOW:** the scheme and host are fixed, and input chooses only the path or query, which can still reach unintended endpoints on that host (`../admin`). The prefix counts as fixed when it is a literal with `scheme://host` followed by `/`, `?` or `#`, a same-origin path (`/api/...`, but not `//host`), or a leading configured value such as `c.baseURL` or `API_BASE_URL`.
+  - **No finding:** nothing in the URL is request-derived. Building a URL from constants and config isn't reported just because it's built at runtime.
+
+  Go, JS/TS, Python, PHP, Ruby and Java all split concatenation and interpolated strings. Go also splits `fmt.Sprintf`. Python `%`-formatting and `.format(...)` are not split: a request-derived argument there is reported HIGH.
 - **Unreachable code ignores comments.** A comment after a `return` isn't a statement. tree-sitter-python also attaches a comment indented under an early `return` to that block.
 - **`py-empty-exception-handler` only flags bare `except:` and `except Exception`/`BaseException`.** A narrowly typed `except ImportError: pass` is deliberate. This matches Bandit's B110 default.
 - **`js-react-dangerously-set-innerhtml` skips sanitized values.** It doesn't report an `__html` value that is a `DOMPurify.sanitize(...)`/`sanitize(...)`/`sanitizeHtml(...)` call, or a local variable assigned from one.
@@ -82,7 +87,7 @@ Other languages are still out of scope — revisit per-language the same way Pyt
 | `go-ssti` | HIGH | `text/template`/`html/template`'s `New(...).Parse(...)` chain with a template-source argument built via `fmt.Sprintf`/concatenation, or (intraprocedural taint tracking) a local variable derived from request/env input |
 | `go-predictable-prng-seed` | MEDIUM | `math/rand`'s `Seed(...)`/`NewSource(...)` called with a compile-time integer literal |
 | `go-empty-block` | LOW | An `if`/`else`/`for`/`for-range` body with no statements at all (Bug, not Vulnerability — see above) |
-| `go-ssrf` | HIGH | `net/http`'s `Get`/`Post`/`Head`/`PostForm`/`NewRequest`/`NewRequestWithContext` with a URL built via `fmt.Sprintf`/concatenation, or (intraprocedural taint tracking) a local variable derived from request/env input, instead of a validated/allowlisted URL |
+| `go-ssrf` | HIGH / LOW | `net/http`'s `Get`/`Post`/`Head`/`PostForm`/`NewRequest`/`NewRequestWithContext` with a URL carrying request input (directly, through a local variable, or via `fmt.Sprintf`/concatenation). HIGH when input can choose the host, LOW when only the path or query (see False-positive policy) |
 
 ## Built-in rules — Python (28)
 
@@ -106,7 +111,7 @@ Other languages are still out of scope — revisit per-language the same way Pyt
 | `py-insecure-cookie` | MEDIUM | `set_cookie(..., secure=False)` or `httponly=False` |
 | `py-path-traversal` | HIGH | `open(...)` with a path built from `request` (directly, or through a local variable — taint tracking) or via f-string/%/concatenation/`.format` |
 | `py-cookie-missing-flags` | LOW | `set_cookie(...)` that never passes `secure=`/`httponly=` at all |
-| `py-ssrf` | HIGH | `requests.get/post/put/delete/head/patch(...)` with a URL derived from request/env input (directly, or through a local variable — taint tracking) or built via f-string/%/concatenation/`.format` |
+| `py-ssrf` | HIGH / LOW | `requests.get/post/put/delete/head/patch(...)` with a URL derived from request/env input (directly, or through a local variable — taint tracking) or built via f-string/%/concatenation/`.format` |
 | `py-xxe` | HIGH | `lxml.etree.XMLParser(resolve_entities=True)` |
 | `py-ssti` | HIGH | Flask `render_template_string(...)` with a template-source argument derived from request/env input (directly, or through a local variable — taint tracking) or built via f-string/%/concatenation/`.format` |
 | `py-nosqli` | HIGH | pymongo `find`/`find_one`/`find_one_and_update`/`find_one_and_delete`/`update_one`/`update_many`/`delete_one`/`delete_many` with a filter argument that is itself (directly, or through a local variable — taint tracking) request/env-derived, rather than a literal filter with individually-typed fields |
@@ -146,7 +151,7 @@ Applies to `.js`/`.jsx`/`.mjs`/`.cjs` (javascript grammar), `.ts`/`.mts`/`.cts` 
 | `js-empty-exception-handler` | MEDIUM | An empty `catch { }` block (Bug, not Vulnerability — see above) |
 | `js-empty-block` | LOW | An `if`/`else`/`while`/`for` body with no statements at all (Bug, not Vulnerability — see above) |
 | `js-unreachable-code` | LOW | A statement immediately following a `return`/`throw`/`break`/`continue` in the same block (Bug, not Vulnerability — see above) |
-| `js-ssrf` | HIGH | `fetch(...)` or `axios.get/post/put/delete(...)` with a URL derived from request/env input (directly, or through a local variable — taint tracking) or built via template-literal interpolation/concatenation |
+| `js-ssrf` | HIGH / LOW | `fetch(...)` or `axios.get/post/put/delete(...)` with a URL derived from request/env input (directly, or through a local variable — taint tracking) or built via template-literal interpolation/concatenation |
 
 ## Built-in rules — PHP (25)
 
@@ -168,7 +173,7 @@ Applies to `.js`/`.jsx`/`.mjs`/`.cjs` (javascript grammar), `.ts`/`.mts`/`.cts` 
 | `php-cors-wildcard` | MEDIUM | `header("Access-Control-Allow-Origin: *")` |
 | `php-insecure-cookie` | MEDIUM | An array literal with `'secure' => false` or `'httponly' => false` (the PHP 7.3+ `setcookie(..., array $options)` form) |
 | `php-cookie-missing-flags` | LOW | `setcookie(...)` whose options array never sets `'secure'`/`'httponly'`, or whose positional-argument call never reaches the `$secure`/`$httponly` parameters |
-| `php-ssrf` | HIGH | `file_get_contents(...)` or `curl_setopt(..., CURLOPT_URL, ...)` with a URL built via concatenation/interpolation, or (taint tracking) a local variable derived from a superglobal/env input |
+| `php-ssrf` | HIGH / LOW | `file_get_contents(...)` or `curl_setopt(..., CURLOPT_URL, ...)` with a URL built via concatenation/interpolation, or (taint tracking) a local variable derived from a superglobal/env input |
 | `php-xxe` | HIGH | `libxml_disable_entity_loader(false)` |
 | `php-nosqli` | HIGH | MongoDB driver `find`/`findOne`/`updateOne`/`updateMany`/`deleteOne`/`deleteMany` with a filter argument that is itself (directly, or through a local variable — taint tracking) a superglobal/env-derived value, rather than a literal filter with individually-typed fields |
 | `php-unsafe-reflection` | HIGH | `call_user_func(...)`/`call_user_func_array(...)` with a callback argument that is itself (directly, or through a local variable — taint tracking) a superglobal/env-derived value |
@@ -198,7 +203,7 @@ Applies to `.js`/`.jsx`/`.mjs`/`.cjs` (javascript grammar), `.ts`/`.mts`/`.cts` 
 | `ruby-insecure-cookie` | MEDIUM | A hash literal with `secure: false` or `httponly: false` |
 | `ruby-path-traversal` | HIGH | `File.open`/`File.read` with a path built from `params`/`request` (directly, or through a local variable — taint tracking) or via interpolation/concatenation |
 | `ruby-cookie-missing-flags` | LOW | `cookies[...] = ...` assigning a plain value, or a hash that never sets `secure:`/`httponly:` |
-| `ruby-ssrf` | HIGH | `Net::HTTP.get(...)` or `URI.open(...)` with a URL derived from params/env input (directly, or through a local variable — taint tracking) or built via interpolation/concatenation |
+| `ruby-ssrf` | HIGH / LOW | `Net::HTTP.get(...)` or `URI.open(...)` with a URL derived from params/env input (directly, or through a local variable — taint tracking) or built via interpolation/concatenation |
 | `ruby-xxe` | HIGH | `Nokogiri::XML::ParseOptions::NOENT` used anywhere, or a `config.noent` call in a Nokogiri parse-options block |
 | `ruby-ssti` | HIGH | `ERB.new(...)` with a template-source argument derived from params/env input (directly, or through a local variable — taint tracking) or built via interpolation/concatenation |
 | `ruby-unsafe-reflection` | HIGH | `send`/`public_send`/`__send__` with a method-name argument that is itself (directly, or through a local variable — taint tracking) params/env-derived (a literal symbol, `obj.send(:foo)`, is not flagged) |
@@ -225,7 +230,7 @@ Applies to `.js`/`.jsx`/`.mjs`/`.cjs` (javascript grammar), `.ts`/`.mts`/`.cts` 
 | `java-insecure-cookie` | MEDIUM | `cookie.setSecure(false)` or `cookie.setHttpOnly(false)` |
 | `java-path-traversal` | HIGH | `new File(...)`/`FileInputStream(...)`/`FileReader(...)` with a path built from `request`/`req` (directly, or through a local variable — taint tracking) or via `+` concatenation |
 | `java-cookie-missing-flags` | LOW | `new Cookie(...)` in a method body where `setSecure(true)`/`setHttpOnly(true)` is never called anywhere in that same body |
-| `java-ssrf` | HIGH | `new URL(...)` with an argument derived from request input (directly, or through a local variable — taint tracking) or built via `+` concatenation |
+| `java-ssrf` | HIGH / LOW | `new URL(...)` with an argument derived from request input (directly, or through a local variable — taint tracking) or built via `+` concatenation |
 | `java-yaml-unsafe-load` | HIGH | `new Yaml().load(...)` — the zero-argument (default) SnakeYAML constructor only, not `new Yaml(anyArg).load(...)` |
 | `java-eval-detected` | HIGH | `.eval(...)` (e.g. `javax.script.ScriptEngine`) with an argument built via `+` concatenation, or a local variable derived from request/env input — a literal/hardcoded script argument is not flagged |
 | `java-unsafe-reflection` | HIGH | `Class.forName(...)` with a class-name argument that is itself (directly, or through a local variable — taint tracking) request/env-derived |

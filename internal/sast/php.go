@@ -440,24 +440,22 @@ func checkPHPSSRF(root *gts.Node, src []byte, path string) []model.Issue {
 	for _, m := range phpFileGetContentsQuery.ExecuteNode(root, phpLang, src) {
 		caps := phpCapMap(m)
 		arg := caps["arg"]
-		if !phpIsDynamicString(arg) && !phpTaintedArg(arg, src) {
+		level := phpURL.classify(arg, src)
+		if level == ssrfNone {
 			continue
 		}
-		issues = append(issues, phpIssueAt("php-ssrf", "HIGH", path,
-			"Outbound request URL built from a non-literal value",
-			"file_get_contents(...) argument is built via concatenation/interpolation, or is a local variable derived from a superglobal/env input, rather than a validated/allowlisted URL",
-			caps["call"]))
+		severity, title, message := ssrfText(level, "file_get_contents(...)")
+		issues = append(issues, phpIssueAt("php-ssrf", severity, path, title, message, caps["call"]))
 	}
 	for _, m := range phpCurlURLQuery.ExecuteNode(root, phpLang, src) {
 		caps := phpCapMap(m)
 		arg := caps["arg"]
-		if !phpIsDynamicString(arg) && !phpTaintedArg(arg, src) {
+		level := phpURL.classify(arg, src)
+		if level == ssrfNone {
 			continue
 		}
-		issues = append(issues, phpIssueAt("php-ssrf", "HIGH", path,
-			"Outbound request URL built from a non-literal value",
-			"curl_setopt(..., CURLOPT_URL, ...) value is built via concatenation/interpolation, or is a local variable derived from a superglobal/env input, rather than a validated/allowlisted URL",
-			caps["call"]))
+		severity, title, message := ssrfText(level, "curl_setopt(..., CURLOPT_URL, ...)")
+		issues = append(issues, phpIssueAt("php-ssrf", severity, path, title, message, caps["call"]))
 	}
 	return issues
 }

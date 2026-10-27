@@ -2,14 +2,16 @@
 package fpcorpus
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/colibrisec/ojo/internal/model"
 )
 
 // Check asserts what rule did in issues. want is "none" (must not fire),
-// "fire" (must fire), "low" (must fire, at LOW) or "known" (a recorded false
-// positive not fixed yet: must still fire, so a fix flips it to "none").
+// "fire" (must fire), "high"/"low" (must fire, at that severity) or "known"
+// (a recorded false positive not fixed yet: must still fire, so a fix flips
+// it to "none").
 func Check(t *testing.T, rule, want, source string, issues []model.Issue) {
 	t.Helper()
 	var hits []model.Issue
@@ -27,13 +29,13 @@ func Check(t *testing.T, rule, want, source string, issues []model.Issue) {
 		if len(hits) == 0 {
 			t.Errorf("%s no longer fires on a must-fire case (%s); all issues: %+v", rule, source, issues)
 		}
-	case "low":
+	case "low", "high":
 		if len(hits) == 0 {
 			t.Errorf("%s no longer fires (%s)", rule, source)
 		}
 		for _, h := range hits {
-			if h.Severity != "LOW" {
-				t.Errorf("%s: want LOW, got %s: %+v", rule, h.Severity, h)
+			if !strings.EqualFold(h.Severity, want) {
+				t.Errorf("%s: want %s, got %s: %+v", rule, strings.ToUpper(want), h.Severity, h)
 			}
 		}
 	case "known":

@@ -87,17 +87,99 @@ func TestEvents(t *testing.T) {
 `,
 	},
 	{
-		name:   "go concatenated url outside tests still fires",
+		name:   "go host from request outside tests stays HIGH",
 		source: "twin",
 		file:   "internal/proxy/recon.go",
 		rule:   "go-ssrf",
-		want:   "fire",
+		want:   "high",
 		code: `package proxy
 
 import "net/http"
 
-func fetch(base string) {
-	http.Get(base + "/events")
+func fetch(r *http.Request) {
+	http.Get(r.FormValue("base") + "/events")
+}
+`,
+	},
+	{
+		name:   "go configured base URL plus a non-request path",
+		source: "triaged false positive",
+		file:   "internal/client/client.go",
+		rule:   "go-ssrf",
+		want:   "none",
+		code: `package client
+
+import (
+	"context"
+	"io"
+	"net/http"
+)
+
+type Host struct{ baseURL string }
+
+func (h *Host) do(ctx context.Context, method, path string, body io.Reader) {
+	http.NewRequestWithContext(ctx, method, h.baseURL+path, body)
+	http.NewRequestWithContext(ctx, http.MethodPost, h.baseURL+"/api/graphql", body)
+}
+`,
+	},
+	{
+		name:   "go configured base URL plus a request path is LOW",
+		source: "twin",
+		file:   "internal/client/client.go",
+		rule:   "go-ssrf",
+		want:   "low",
+		code: `package client
+
+import "net/http"
+
+type Host struct{ baseURL string }
+
+func (h *Host) proxy(w http.ResponseWriter, r *http.Request) {
+	http.Get(h.baseURL + "/repos/" + r.URL.Query().Get("repo"))
+}
+`,
+	},
+	{
+		name:   "go upload path from auth context and a generated id",
+		source: "triaged false positive",
+		file:   "handlers/files_handler.go",
+		rule:   "go-path-traversal",
+		want:   "none",
+		code: `package handlers
+
+import (
+	"net/http"
+	"os"
+	"path/filepath"
+)
+
+func (h *H) Upload(w http.ResponseWriter, r *http.Request) {
+	org := mustOrg(r.Context())
+	src, _, _ := r.FormFile("file")
+	defer src.Close()
+	dir := filepath.Join(h.uploadDir, org.String())
+	os.Create(filepath.Join(dir, newID()))
+}
+`,
+	},
+	{
+		name:   "go path from a method on request data still fires",
+		source: "twin",
+		file:   "handlers/files_handler.go",
+		rule:   "go-path-traversal",
+		want:   "fire",
+		code: `package handlers
+
+import (
+	"net/http"
+	"net/url"
+	"os"
+)
+
+func (h *H) Get(w http.ResponseWriter, r *http.Request) {
+	u, _ := url.Parse(r.FormValue("u"))
+	os.Open(u.Path)
 }
 `,
 	},
@@ -287,14 +369,41 @@ def key(token, decode, JWTError):
 `,
 	},
 	{
-		name:   "js protocol-relative or host-dynamic fetch still fires",
+		name:   "js protocol-relative fetch with a request host stays HIGH",
 		source: "twin",
-		file:   "web/src/lib/api.ts",
+		file:   "server/proxy.js",
 		rule:   "js-ssrf",
-		want:   "fire",
-		code: `export async function req(host: string) {
-  await fetch("//" + host + "/x");
+		want:   "high",
+		code: `app.get("/p", async (req, res) => {
+  await fetch("//" + req.query.host + "/x");
+  await fetch(` + "`https://${req.query.host}/x`" + `);
+});
+`,
+	},
+	{
+		name:   "js frontend axios against a configured base URL",
+		source: "triaged false positive",
+		file:   "frontend/src/stores/auth.js",
+		rule:   "js-ssrf",
+		want:   "none",
+		code: `import axios from "axios";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
+export async function login(email, password, token) {
+  await axios.post(` + "`${API_BASE_URL}/auth/token`" + `, { email, password });
+  await axios.get(` + "`${API_BASE_URL}/users/me`" + `, { headers: { Authorization: token } });
 }
+`,
+	},
+	{
+		name:   "js fixed host with a request path is LOW",
+		source: "twin",
+		file:   "server/proxy.js",
+		rule:   "js-ssrf",
+		want:   "low",
+		code: `app.get("/p", async (req, res) => {
+  await fetch(` + "`https://api.internal/items/${req.params.id}`" + `);
+  await fetch("/api/" + req.query.path);
+});
 `,
 	},
 	{
@@ -302,7 +411,7 @@ def key(token, decode, JWTError):
 		source: "triaged false positive",
 		file:   "src/lib/api.ts",
 		rule:   "js-ssrf",
-		want:   "known",
+		want:   "none",
 		code: `const API_BASE_URL = "https://api.example.com";
 export async function req(path: string) {
   return fetch(` + "`${API_BASE_URL}${path}`" + `);
@@ -375,20 +484,20 @@ export function Msg({ text }: { text: string }) {
 		code: `require "net/http"
 describe "client" do
   it "fetches" do
-    Net::HTTP.get("http://localhost:" + port.to_s + "/x")
+    Net::HTTP.get("http://localhost:" + params[:port] + "/x")
   end
 end
 `,
 	},
 	{
-		name:   "ruby ssrf outside specs still fires",
+		name:   "ruby port from params outside specs stays HIGH",
 		source: "twin",
 		file:   "lib/client.rb",
 		rule:   "ruby-ssrf",
-		want:   "fire",
+		want:   "high",
 		code: `require "net/http"
 def fetch(port)
-  Net::HTTP.get("http://localhost:" + port.to_s + "/x")
+  Net::HTTP.get("http://localhost:" + params[:port] + "/x")
 end
 `,
 	},

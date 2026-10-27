@@ -497,24 +497,22 @@ func checkRubySSRF(root *gts.Node, src []byte, path string) []model.Issue {
 	for _, m := range rubyNetHTTPGetQuery.ExecuteNode(root, rubyLang, src) {
 		caps := rubyCapMap(m)
 		arg := caps["arg"]
-		if !rubyIsDynamicString(arg, src) && !rubyTaintedArg(arg, src) {
+		level := rubyURL.classify(arg, src)
+		if level == ssrfNone {
 			continue
 		}
-		issues = append(issues, rubyIssueAt("ruby-ssrf", "HIGH", path,
-			"Outbound request URL built from request data",
-			"Net::HTTP.get(...) URL argument is derived from params/env input (directly, or through a local variable) or built via interpolation/concatenation rather than a validated/allowlisted URL",
-			caps["call"]))
+		severity, title, message := ssrfText(level, "Net::HTTP.get(...)")
+		issues = append(issues, rubyIssueAt("ruby-ssrf", severity, path, title, message, caps["call"]))
 	}
 	for _, m := range rubyURIOpenQuery.ExecuteNode(root, rubyLang, src) {
 		caps := rubyCapMap(m)
 		arg := caps["arg"]
-		if !rubyIsDynamicString(arg, src) && !rubyTaintedArg(arg, src) {
+		level := rubyURL.classify(arg, src)
+		if level == ssrfNone {
 			continue
 		}
-		issues = append(issues, rubyIssueAt("ruby-ssrf", "HIGH", path,
-			"Outbound request URL built from request data",
-			"URI.open(...) URL argument is derived from params/env input (directly, or through a local variable) or built via interpolation/concatenation rather than a validated/allowlisted URL",
-			caps["call"]))
+		severity, title, message := ssrfText(level, "URI.open(...)")
+		issues = append(issues, rubyIssueAt("ruby-ssrf", severity, path, title, message, caps["call"]))
 	}
 	return issues
 }
