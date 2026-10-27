@@ -113,6 +113,9 @@ func phpRootedAtSuperglobal(n *gts.Node, src []byte) bool {
 
 // phpIsEnvSource matches getenv(...) by raw text.
 func phpIsEnvSource(n *gts.Node, src []byte) bool {
+	if !envTaintSources {
+		return false
+	}
 	return strings.HasPrefix(string(n.Text(src)), "getenv(")
 }
 
@@ -437,24 +440,22 @@ func checkPHPSSRF(root *gts.Node, src []byte, path string) []model.Issue {
 	for _, m := range phpFileGetContentsQuery.ExecuteNode(root, phpLang, src) {
 		caps := phpCapMap(m)
 		arg := caps["arg"]
-		if !phpIsDynamicString(arg) && !phpTaintedArg(arg, src) {
+		level := phpURL.classify(arg, src)
+		if level == ssrfNone {
 			continue
 		}
-		issues = append(issues, phpIssueAt("php-ssrf", "HIGH", path,
-			"Outbound request URL built from a non-literal value",
-			"file_get_contents(...) argument is built via concatenation/interpolation, or is a local variable derived from a superglobal/env input, rather than a validated/allowlisted URL",
-			caps["call"]))
+		severity, title, message := ssrfText(level, "file_get_contents(...)")
+		issues = append(issues, phpIssueAt("php-ssrf", severity, path, title, message, caps["call"]))
 	}
 	for _, m := range phpCurlURLQuery.ExecuteNode(root, phpLang, src) {
 		caps := phpCapMap(m)
 		arg := caps["arg"]
-		if !phpIsDynamicString(arg) && !phpTaintedArg(arg, src) {
+		level := phpURL.classify(arg, src)
+		if level == ssrfNone {
 			continue
 		}
-		issues = append(issues, phpIssueAt("php-ssrf", "HIGH", path,
-			"Outbound request URL built from a non-literal value",
-			"curl_setopt(..., CURLOPT_URL, ...) value is built via concatenation/interpolation, or is a local variable derived from a superglobal/env input, rather than a validated/allowlisted URL",
-			caps["call"]))
+		severity, title, message := ssrfText(level, "curl_setopt(..., CURLOPT_URL, ...)")
+		issues = append(issues, phpIssueAt("php-ssrf", severity, path, title, message, caps["call"]))
 	}
 	return issues
 }
@@ -742,9 +743,13 @@ func checkPHPUnreachableCode(root *gts.Node, src []byte, path string) []model.Is
 	var issues []model.Issue
 	for _, m := range phpUnreachableQuery.ExecuteNode(root, phpLang, src) {
 		caps := phpCapMap(m)
+		after := tsSkipComments(caps["after"], phpLang)
+		if after == nil {
+			continue
+		}
 		issues = append(issues, phpIssueAt("php-unreachable-code", "LOW", path,
 			"Unreachable code", "this statement can never execute; it follows a "+string(caps["term"].Text(src))+" in the same block",
-			caps["after"]))
+			after))
 	}
 	return issues
 }

@@ -366,6 +366,9 @@ func pyAssignInfo(n *gts.Node, lang *gts.Language, src []byte) (string, *gts.Nod
 // by raw text rather than decomposing the call shape — cheap and good
 // enough for a single-node source check.
 func pyIsEnvSource(n *gts.Node, src []byte) bool {
+	if !envTaintSources {
+		return false
+	}
 	text := string(n.Text(src))
 	return strings.HasPrefix(text, "os.getenv(") || strings.HasPrefix(text, "os.environ.get(") || strings.HasPrefix(text, "os.environ[")
 }
@@ -524,13 +527,12 @@ func checkPySSRF(root *gts.Node, src []byte, path string) []model.Issue {
 	for _, m := range requestsSSRFQuery.ExecuteNode(root, pyLang, src) {
 		caps := capMap(m)
 		arg := caps["arg"]
-		if !pyIsDynamicString(arg, src) && !pyTaintedArg(arg, src) {
+		level := pyURL.classify(arg, src)
+		if level == ssrfNone {
 			continue
 		}
-		issues = append(issues, pyIssueAt("py-ssrf", "HIGH", path,
-			"Outbound request URL built from request data",
-			"requests."+string(caps["fn"].Text(src))+"(...) URL argument is derived from request/env input (directly, or through a local variable) or built via f-string/%/concatenation/.format rather than a validated/allowlisted URL",
-			caps["call"]))
+		severity, title, message := ssrfText(level, "requests."+string(caps["fn"].Text(src))+"(...)")
+		issues = append(issues, pyIssueAt("py-ssrf", severity, path, title, message, caps["call"]))
 	}
 	return issues
 }
@@ -749,12 +751,33 @@ func checkPyAgentUnsandboxedExec(root *gts.Node, src []byte, path string) []mode
 // own behavior, not a gap.
 var pyExceptQuery = mustPyQuery(`(except_clause (block) @body) @ex`)
 
+// pyBroadExcept reports whether an except clause is bare or catches
+// Exception/BaseException. A narrowly typed "except ImportError: pass" is a
+// deliberate choice, as in Bandit's B110 default.
+func pyBroadExcept(ex *gts.Node, src []byte) bool {
+	header, _, _ := strings.Cut(string(ex.Text(src)), ":")
+	header = strings.TrimSpace(strings.TrimPrefix(header, "except"))
+	header = strings.TrimSpace(strings.TrimPrefix(header, "*"))
+	if header == "" {
+		return true
+	}
+	header, _, _ = strings.Cut(header, " as ")
+	header = strings.Trim(header, "() ")
+	for _, t := range strings.Split(header, ",") {
+		t = strings.TrimSpace(t)
+		if t == "Exception" || t == "BaseException" || t == "builtins.Exception" {
+			return true
+		}
+	}
+	return false
+}
+
 func checkPyEmptyExceptionHandler(root *gts.Node, src []byte, path string) []model.Issue {
 	var issues []model.Issue
 	for _, m := range pyExceptQuery.ExecuteNode(root, pyLang, src) {
 		caps := capMap(m)
 		body := caps["body"]
-		if body.NamedChildCount() != 1 || body.NamedChild(0).Type(pyLang) != "pass_statement" {
+		if body.NamedChildCount() != 1 || body.NamedChild(0).Type(pyLang) != "pass_statement" || !pyBroadExcept(caps["ex"], src) {
 			continue
 		}
 		issues = append(issues, pyIssueAt("py-empty-exception-handler", "MEDIUM", path,
@@ -772,9 +795,13 @@ func checkPyUnreachableCode(root *gts.Node, src []byte, path string) []model.Iss
 	var issues []model.Issue
 	for _, m := range pyUnreachableQuery.ExecuteNode(root, pyLang, src) {
 		caps := capMap(m)
+		after := tsSkipComments(caps["after"], pyLang)
+		if after == nil {
+			continue
+		}
 		issues = append(issues, pyIssueAt("py-unreachable-code", "LOW", path,
 			"Unreachable code", "this statement can never execute; it follows a "+string(caps["term"].Text(src))+" in the same block",
-			caps["after"]))
+			after))
 	}
 	return issues
 }

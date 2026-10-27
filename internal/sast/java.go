@@ -276,6 +276,9 @@ func javaAssignInfo(n *gts.Node, lang *gts.Language, src []byte) (string, *gts.N
 
 // javaIsEnvSource matches System.getenv(...) by raw text.
 func javaIsEnvSource(n *gts.Node, src []byte) bool {
+	if !envTaintSources {
+		return false
+	}
 	return strings.HasPrefix(string(n.Text(src)), "System.getenv(")
 }
 
@@ -494,13 +497,12 @@ func checkJavaSSRF(root *gts.Node, src []byte, path string) []model.Issue {
 	for _, m := range javaURLNewQuery.ExecuteNode(root, javaLang, src) {
 		caps := javaCapMap(m)
 		arg := caps["arg"]
-		if !javaIsDynamicString(arg, src) && !javaTaintedArg(arg, src) {
+		level := javaURL.classify(arg, src)
+		if level == ssrfNone {
 			continue
 		}
-		issues = append(issues, javaIssueAt("java-ssrf", "HIGH", path,
-			"Outbound request URL built from request data",
-			"new URL(...) argument is derived from request input (directly, or through a local variable) or built via `+` concatenation rather than a validated/allowlisted URL",
-			caps["call"]))
+		severity, title, message := ssrfText(level, "new URL(...)")
+		issues = append(issues, javaIssueAt("java-ssrf", severity, path, title, message, caps["call"]))
 	}
 	return issues
 }
@@ -648,9 +650,13 @@ func checkJavaUnreachableCode(root *gts.Node, src []byte, path string) []model.I
 	var issues []model.Issue
 	for _, m := range javaUnreachableQuery.ExecuteNode(root, javaLang, src) {
 		caps := javaCapMap(m)
+		after := tsSkipComments(caps["after"], javaLang)
+		if after == nil {
+			continue
+		}
 		issues = append(issues, javaIssueAt("java-unreachable-code", "LOW", path,
 			"Unreachable code", "this statement can never execute; it follows a "+string(caps["term"].Text(src))+" in the same block",
-			caps["after"]))
+			after))
 	}
 	return issues
 }

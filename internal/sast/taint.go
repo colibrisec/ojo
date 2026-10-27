@@ -210,12 +210,20 @@ func goExprTainted(e ast.Expr, env map[string]bool) bool {
 	case *ast.BinaryExpr:
 		return goExprTainted(v.X, env) || goExprTainted(v.Y, env)
 	case *ast.CallExpr:
+		if goIsRequestContext(v) {
+			return false
+		}
+		if sel, ok := v.Fun.(*ast.SelectorExpr); ok && goExprTainted(sel.X, env) {
+			return true // method on a tainted value: u.String()
+		}
 		for _, arg := range v.Args {
 			if goExprTainted(arg, env) {
 				return true
 			}
 		}
 		return false
+	case *ast.SelectorExpr:
+		return goExprTainted(v.X, env) // field of a tainted value: u.Host
 	case *ast.ParenExpr:
 		return goExprTainted(v.X, env)
 	default:
@@ -224,6 +232,9 @@ func goExprTainted(e ast.Expr, env map[string]bool) bool {
 }
 
 func goIsEnvSource(e ast.Expr) bool {
+	if !envTaintSources {
+		return false
+	}
 	call, ok := e.(*ast.CallExpr)
 	if !ok {
 		return false

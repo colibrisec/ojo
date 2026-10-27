@@ -44,9 +44,12 @@ func k8sChecks(doc map[string]any, path string) []model.Issue {
 		}
 	}
 
-	for _, c := range findContainers(doc) {
+	for _, pc := range findContainers(doc) {
+		c := pc.container
 		name, _ := c["name"].(string)
 		sc, _ := c["securityContext"].(map[string]any)
+		podSC, _ := pc.pod["securityContext"].(map[string]any)
+		nonRoot := runsAsNonRoot(sc, podSC)
 
 		if sc != nil {
 			if v, ok := sc["privileged"].(bool); ok && v {
@@ -57,11 +60,11 @@ func k8sChecks(doc map[string]any, path string) []model.Issue {
 				issues = append(issues, newIssue("k8s-allow-privilege-escalation", "MEDIUM", path, 1,
 					"allowPrivilegeEscalation not explicitly disabled", "container "+name))
 			}
-			if v, ok := sc["runAsNonRoot"].(bool); !ok || !v {
+			if !nonRoot {
 				issues = append(issues, newIssue("k8s-run-as-root", "MEDIUM", path, 1,
 					"runAsNonRoot not explicitly set to true", "container "+name))
 			}
-		} else {
+		} else if !nonRoot {
 			issues = append(issues, newIssue("k8s-run-as-root", "MEDIUM", path, 1,
 				"No securityContext set (runs as root by default)", "container "+name))
 		}
@@ -93,9 +96,39 @@ func findBool(v any, key string) (bool, bool) {
 	return false, false
 }
 
-// findContainers collects every element of any "containers"/"initContainers" list anywhere in doc.
-func findContainers(v any) []map[string]any {
-	var out []map[string]any
+type podContainer struct {
+	container map[string]any
+	pod       map[string]any // the spec holding the containers list
+}
+
+// runsAsNonRoot applies Kubernetes' precedence: a container-level
+// runAsNonRoot/runAsUser overrides the pod-level one. A non-zero runAsUser
+// also means the process isn't root.
+func runsAsNonRoot(container, pod map[string]any) bool {
+	effective := func(key string) (any, bool) {
+		if v, ok := container[key]; ok {
+			return v, true
+		}
+		v, ok := pod[key]
+		return v, ok
+	}
+	if v, ok := effective("runAsNonRoot"); ok {
+		if b, _ := v.(bool); b {
+			return true
+		}
+	}
+	if v, ok := effective("runAsUser"); ok {
+		if uid, ok := v.(int); ok && uid > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// findContainers collects every element of any "containers"/"initContainers" list anywhere in doc,
+// paired with the map that holds that list (the pod spec).
+func findContainers(v any) []podContainer {
+	var out []podContainer
 	switch t := v.(type) {
 	case map[string]any:
 		for k, val := range t {
@@ -103,7 +136,7 @@ func findContainers(v any) []map[string]any {
 				if list, ok := val.([]any); ok {
 					for _, item := range list {
 						if c, ok := item.(map[string]any); ok {
-							out = append(out, c)
+							out = append(out, podContainer{container: c, pod: t})
 						}
 					}
 					continue

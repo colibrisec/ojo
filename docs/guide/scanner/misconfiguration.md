@@ -25,8 +25,8 @@ Most checks carry CWE IDs, shown in every output format.
 **Dockerfile**
 
 - Container runs as root (no `USER` instruction, or `USER root`)
-- `FROM` with no pinned tag / `:latest`
-- Secret-looking `ENV`/`ARG` name (`PASSWORD`, `SECRET`, `API_KEY`, `TOKEN`, ...)
+- `FROM` with no pinned tag / `:latest`. `${ARG}` references resolve through `ARG` defaults declared before the first `FROM`; `scratch` and references to an earlier build stage are not images and are skipped.
+- Secret-looking `ENV`/`ARG` variable name. Only names are checked, never values, and only as whole parts split on `_`, `-`, `.` or camelCase: `GITHUB_TOKEN`, `DB_PASSWORD`, `API_KEY`, `npmToken` match; `TOKENIZERS_PARALLELISM` doesn't. Names ending in `_FILE`/`_PATH`/`_DIR` (the Docker secrets convention) point at a secret rather than hold one and are skipped.
 - `ADD` used for local files instead of `COPY`
 - No `HEALTHCHECK` instruction
 
@@ -37,7 +37,7 @@ Most checks carry CWE IDs, shown in every output format.
 - `hostIPC: true`
 - `securityContext.privileged: true`
 - `allowPrivilegeEscalation` not explicitly `false`
-- `runAsNonRoot` not explicitly `true`
+- Not guaranteed non-root: neither `runAsNonRoot: true` nor a non-zero `runAsUser`, taking the container's `securityContext` over the pod's as Kubernetes does
 - Missing `resources.limits`
 
 **Terraform — AWS provider (56 checks)**
